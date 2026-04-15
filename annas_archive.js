@@ -9,7 +9,7 @@
 __cinderExport = {
 	id: "annas-archive-slow",
 	name: "Anna's Archive (Slow)",
-	version: "1.2.0",
+	version: "1.3.0",
 	icon: "📚",
 	description: "Free slow downloads from Anna's Archive. No account or API key needed.",
 	contentType: "books",
@@ -40,12 +40,12 @@ __cinderExport = {
 				id: "preferred_domain",
 				label: "Preferred Domain",
 				type: "select",
-				defaultValue: "annas-archive.gs",
+				defaultValue: "annas-archive.gd",
 				options: [
+					{ label: "annas-archive.gd", value: "annas-archive.gd" },
 					{ label: "annas-archive.gs", value: "annas-archive.gs" },
 					{ label: "annas-archive.se", value: "annas-archive.se" },
 					{ label: "annas-archive.li", value: "annas-archive.li" },
-					{ label: "annas-archive.gd", value: "annas-archive.gd" },
 				],
 			},
 		];
@@ -54,10 +54,10 @@ __cinderExport = {
 	// ── Internals ──
 
 	_BASE_DOMAINS: [
+		"annas-archive.gd",
 		"annas-archive.gs",
 		"annas-archive.se",
 		"annas-archive.li",
-		"annas-archive.gd",
 	],
 
 	_getBaseUrl: async function() {
