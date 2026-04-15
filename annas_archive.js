@@ -9,7 +9,7 @@
 __cinderExport = {
 	id: "annas-archive-slow",
 	name: "Anna's Archive (Slow)",
-	version: "1.5.0",
+	version: "1.5.1",
 	icon: "📚",
 	description: "Free slow downloads from Anna's Archive. No account or API key needed.",
 	contentType: "books",
@@ -312,6 +312,12 @@ __cinderExport = {
 							if (candidateUrl.indexOf("apple.com") !== -1) continue;
 							if (candidateUrl.indexOf("google.com") !== -1) continue;
 							if (candidateUrl.indexOf("facebook.com") !== -1) continue;
+							if (candidateUrl.indexOf("github.com") !== -1) continue;
+							if (candidateUrl.indexOf("twitter.com") !== -1) continue;
+							if (candidateUrl.indexOf("reddit.com") !== -1) continue;
+							if (candidateUrl.indexOf("wikipedia.org") !== -1) continue;
+							if (candidateUrl.indexOf("mozilla.org") !== -1) continue;
+							if (candidateUrl.indexOf("darkreader") !== -1) continue;
 							if (candidateUrl.indexOf("motrix") !== -1) continue;
 							if (candidateUrl.indexOf("readera") !== -1) continue;
 							if (candidateUrl.indexOf("calibre") !== -1) continue;
@@ -339,6 +345,12 @@ __cinderExport = {
 						if (extHref.indexOf("apple.com") !== -1) continue;
 						if (extHref.indexOf("google.com") !== -1) continue;
 						if (extHref.indexOf("facebook.com") !== -1) continue;
+						if (extHref.indexOf("github.com") !== -1) continue;
+						if (extHref.indexOf("twitter.com") !== -1) continue;
+						if (extHref.indexOf("reddit.com") !== -1) continue;
+						if (extHref.indexOf("wikipedia.org") !== -1) continue;
+						if (extHref.indexOf("mozilla.org") !== -1) continue;
+						if (extHref.indexOf("darkreader") !== -1) continue;
 						if (extHref.indexOf("motrix") !== -1) continue;
 						if (extHref.indexOf("readera") !== -1) continue;
 						if (extHref.indexOf("calibre") !== -1) continue;
