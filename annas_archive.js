@@ -9,7 +9,7 @@
 __cinderExport = {
 	id: "annas-archive-slow",
 	name: "Anna's Archive (Slow)",
-	version: "1.5.2",
+	version: "1.5.3",
 	icon: "📚",
 	description: "Free slow downloads from Anna's Archive. No account or API key needed.",
 	contentType: "books",
@@ -279,17 +279,26 @@ __cinderExport = {
 				var slowDoc = cinder.parseHTML(slowResp.data);
 				var downloadUrl = null;
 
-				// Strategy 1: Look for "📚 Download now" anchor (servers 5, 7)
-				var allAnchors = slowDoc.querySelectorAll("a");
-				for (var a = 0; a < allAnchors.length; a++) {
-					var anchorText = allAnchors[a].text() || "";
-					var anchorHref = allAnchors[a].attr("href") || "";
-					if (anchorText.indexOf("Download now") !== -1 && anchorHref.indexOf("http") === 0) {
-						// Make sure it's not an AA internal link
-						if (anchorHref.indexOf("annas-archive") === -1) {
-							downloadUrl = anchorHref;
-							cinder.log("[AA] Found 'Download now' link: " + downloadUrl);
-							break;
+				// Strategy 0: Regex on raw HTML for the download link
+				// Most reliable — parseHTML can choke on 178KB pages with Dark Reader injection
+				var dnMatch = slowResp.data.match(/href="(https?:\/\/[^"]+)"[^>]*>[^<]*Download now/i);
+				if (dnMatch && dnMatch[1] && dnMatch[1].indexOf("annas-archive") === -1) {
+					downloadUrl = dnMatch[1];
+					cinder.log("[AA] ✅ Found download link via regex: " + downloadUrl);
+				}
+
+				// Strategy 1: Look for "📚 Download now" anchor via DOM (fallback)
+				if (!downloadUrl) {
+					var allAnchors = slowDoc.querySelectorAll("a");
+					for (var a = 0; a < allAnchors.length; a++) {
+						var anchorText = allAnchors[a].text() || "";
+						var anchorHref = allAnchors[a].attr("href") || "";
+						if (anchorText.indexOf("Download now") !== -1 && anchorHref.indexOf("http") === 0) {
+							if (anchorHref.indexOf("annas-archive") === -1) {
+								downloadUrl = anchorHref;
+								cinder.log("[AA] Found 'Download now' anchor: " + downloadUrl);
+								break;
+							}
 						}
 					}
 				}
