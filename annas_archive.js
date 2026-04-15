@@ -9,7 +9,7 @@
 __cinderExport = {
 	id: "annas-archive-slow",
 	name: "Anna's Archive (Slow)",
-	version: "1.3.0",
+	version: "1.4.0",
 	icon: "📚",
 	description: "Free slow downloads from Anna's Archive. No account or API key needed.",
 	contentType: "books",
@@ -203,30 +203,28 @@ __cinderExport = {
 		var md5 = item.url || item.id;
 		cinder.log("[AA] Resolving md5: " + md5);
 
-		// Step 1: Load book detail page
+		// Step 1: Load book detail page to find slow download links
 		var detailPath = "/md5/" + md5;
 		var detailResp = await this._fetchWithFallback(detailPath);
 		var detailDoc = cinder.parseHTML(detailResp.data);
 
-		// Step 2: Find slow download links
+		// Step 2: Find slow download links on the detail page
 		var slowLinks = [];
 		var allLinks = detailDoc.querySelectorAll("a[href*='/slow_download/']");
-
 		for (var i = 0; i < allLinks.length; i++) {
 			var href = allLinks[i].attr("href");
 			if (href) slowLinks.push(href);
 		}
-
-		cinder.log("[AA] Found " + slowLinks.length + " slow download links");
+		cinder.log("[AA] Found " + slowLinks.length + " slow download links on detail page");
 
 		if (slowLinks.length === 0) {
-			for (var idx = 0; idx < 10; idx++) {
+			for (var idx = 0; idx < 8; idx++) {
 				slowLinks.push("/slow_download/" + md5 + "/0/" + idx);
 			}
-			cinder.log("[AA] Constructed 10 fallback slow links");
+			cinder.log("[AA] Constructed 8 fallback slow links");
 		}
 
-		// Step 3: Prefer no-waitlist links (indices 5-9)
+		// Step 3: Prefer no-waitlist links (indices 5-7)
 		var noWaitlist = [];
 		var waitlist = [];
 		for (var j = 0; j < slowLinks.length; j++) {
@@ -239,97 +237,110 @@ __cinderExport = {
 			}
 		}
 		var orderedLinks = noWaitlist.concat(waitlist);
-		cinder.log("[AA] Ordered: " + noWaitlist.length + " no-waitlist, " + waitlist.length + " waitlist");
+		cinder.log("[AA] Trying " + noWaitlist.length + " no-waitlist + " + waitlist.length + " waitlist");
 
-		// Step 4: Try each slow link
+		// Step 4: For each slow link, use fetchBrowser (DDoS-Guard + JS countdown)
+		// The slow download page has a 5s JS countdown, then reveals a "📚 Download now" link
 		var lastError = null;
+		var baseUrl = await this._getBaseUrl();
+
 		for (var k = 0; k < orderedLinks.length; k++) {
 			try {
 				var slowPath = orderedLinks[k];
-				cinder.log("[AA] Trying slow link " + (k+1) + "/" + orderedLinks.length + ": " + slowPath);
+				// Make absolute URL
+				var slowUrl = slowPath.indexOf("http") === 0 ? slowPath : baseUrl + slowPath;
+				cinder.log("[AA] Fetching slow link " + (k+1) + ": " + slowUrl);
 
-				var slowResp = await this._fetchWithFallback(slowPath);
+				// MUST use fetchBrowser — DDoS-Guard blocks plain HTTP,
+				// and the download link only appears after JS countdown
+				var slowResp = await cinder.fetchBrowser(slowUrl);
+
+				if (!slowResp.data || slowResp.data.length < 200) {
+					cinder.warn("[AA] Slow link " + (k+1) + " returned empty/short response");
+					continue;
+				}
+
 				var slowDoc = cinder.parseHTML(slowResp.data);
 				var downloadUrl = null;
 
-				// Look for download links
-				var downloadSelectors = [
-					"a[href*='.epub']",
-					"a[href*='.pdf']",
-					"a[href*='.mobi']",
-					"a[href*='.azw3']",
-					"a[href*='.cbz']",
-					"a[href*='download']",
-					"a.btn",
-					"a[href*='get']",
-				];
-
-				for (var s = 0; s < downloadSelectors.length; s++) {
-					var dlLinks = slowDoc.querySelectorAll(downloadSelectors[s]);
-					for (var d = 0; d < dlLinks.length; d++) {
-						var dlHref = dlLinks[d].attr("href");
-						if (dlHref && dlHref.indexOf("slow_download") === -1
-							&& dlHref.indexOf("/md5/") === -1
-							&& dlHref.length > 10) {
-							downloadUrl = dlHref;
-							break;
-						}
-					}
-					if (downloadUrl) break;
-				}
-
-				// Check meta refresh redirect
-				if (!downloadUrl) {
-					var metas = slowDoc.querySelectorAll("meta[http-equiv='refresh']");
-					for (var m = 0; m < metas.length; m++) {
-						var content = metas[m].attr("content") || "";
-						var urlMatch = content.match(/url=(.+)/i);
-						if (urlMatch) {
-							downloadUrl = urlMatch[1].trim();
-							break;
-						}
-					}
-				}
-
-				// Check external links
-				if (!downloadUrl) {
-					var extLinks = slowDoc.querySelectorAll("a[href^='http']");
-					for (var e = 0; e < extLinks.length; e++) {
-						var extHref = extLinks[e].attr("href") || "";
-						if (extHref.indexOf("annas-archive") !== -1) continue;
-						if (extHref.indexOf("cloudflare") !== -1) continue;
-						if (extHref.indexOf("javascript") !== -1) continue;
-						if (extHref.indexOf("#") === 0) continue;
-						if (extHref.indexOf("apple.com") !== -1) continue;
-						if (extHref.indexOf("google.com") !== -1) continue;
-						if (extHref.indexOf("facebook.com") !== -1) continue;
-						downloadUrl = extHref;
-						cinder.log("[AA] Found external link: " + downloadUrl);
+				// Strategy 1: Look for the "📚 Download now" link (the real download)
+				var allAnchors = slowDoc.querySelectorAll("a");
+				for (var a = 0; a < allAnchors.length; a++) {
+					var anchorText = allAnchors[a].text() || "";
+					var anchorHref = allAnchors[a].attr("href") || "";
+					if (anchorText.indexOf("Download now") !== -1 && anchorHref.indexOf("http") === 0) {
+						downloadUrl = anchorHref;
+						cinder.log("[AA] Found 'Download now' link: " + downloadUrl);
 						break;
 					}
 				}
 
+				// Strategy 2: Look for external partner links (e.g., wbsg8v.xyz)
+				if (!downloadUrl) {
+					var extLinks = slowDoc.querySelectorAll("a[href^='http']");
+					for (var e = 0; e < extLinks.length; e++) {
+						var extHref = extLinks[e].attr("href") || "";
+						// Skip known non-download domains
+						if (extHref.indexOf("annas-archive") !== -1) continue;
+						if (extHref.indexOf("cloudflare") !== -1) continue;
+						if (extHref.indexOf("apple.com") !== -1) continue;
+						if (extHref.indexOf("google.com") !== -1) continue;
+						if (extHref.indexOf("facebook.com") !== -1) continue;
+						if (extHref.indexOf("motrix") !== -1) continue;
+						if (extHref.indexOf("readera") !== -1) continue;
+						if (extHref.indexOf("calibre") !== -1) continue;
+						if (extHref.indexOf("printfriendly") !== -1) continue;
+						if (extHref.indexOf("cloudconvert") !== -1) continue;
+						if (extHref.indexOf("ddos-guard") !== -1) continue;
+						if (extHref.indexOf("#") === 0) continue;
+						// This is likely the partner download link
+						downloadUrl = extHref;
+						cinder.log("[AA] Found partner link: " + downloadUrl);
+						break;
+					}
+				}
+
+				// Strategy 3: Check for file extension in any link
+				if (!downloadUrl) {
+					var fileSelectors = [
+						"a[href*='.epub']", "a[href*='.pdf']",
+						"a[href*='.mobi']", "a[href*='.azw3']",
+						"a[href*='.cbz']",
+					];
+					for (var s = 0; s < fileSelectors.length; s++) {
+						var fileLinks = slowDoc.querySelectorAll(fileSelectors[s]);
+						if (fileLinks.length > 0) {
+							var fHref = fileLinks[0].attr("href") || "";
+							if (fHref.length > 10) {
+								downloadUrl = fHref;
+								cinder.log("[AA] Found file link: " + downloadUrl);
+								break;
+							}
+						}
+					}
+				}
+
 				if (downloadUrl) {
+					// Ensure absolute URL
 					if (downloadUrl.indexOf("http") !== 0) {
-						var baseUrl = await this._getBaseUrl();
 						downloadUrl = baseUrl + downloadUrl;
 					}
-					cinder.log("[AA] Resolved download URL: " + downloadUrl);
+					cinder.log("[AA] ✅ Resolved: " + downloadUrl);
 					return {
 						url: downloadUrl,
 						headers: {
-							"Referer": (await this._getBaseUrl()) + slowPath,
+							"Referer": slowUrl,
 						},
 					};
 				}
 
-				cinder.warn("[AA] No download URL on slow link " + (k+1));
+				cinder.warn("[AA] No download URL found on slow link " + (k+1) + " (HTML length: " + slowResp.data.length + ")");
 			} catch (err) {
 				cinder.warn("[AA] Slow link " + (k+1) + " failed: " + err);
 				lastError = err;
 			}
 		}
 
-		throw lastError || new Error("Could not resolve download. All slow mirrors may be temporarily unavailable.");
+		throw lastError || new Error("Could not resolve download. The book may not have free slow download mirrors available.");
 	},
 };
