@@ -9,16 +9,17 @@
 __cinderExport = {
 	id: "annas-archive-slow",
 	name: "Anna's Archive (Slow)",
-	version: "1.1.0",
+	version: "1.2.0",
 	icon: "📚",
 	description: "Free slow downloads from Anna's Archive. No account or API key needed.",
 	contentType: "books",
 
 	capabilities: {
-		search: true,
+		search: true,           // Has search() method
 		discover: false,
 		download: false,
-		resolve: true,
+		resolve: true,          // Has resolve() for multi-step download
+		searchDownloads: true,  // Shows in "Search Downloads" on book detail
 		manga: false,
 	},
 
