@@ -9,7 +9,7 @@
 __cinderExport = {
 	id: "annas-archive-slow",
 	name: "Anna's Archive (Slow)",
-	version: "1.5.1",
+	version: "1.5.2",
 	icon: "📚",
 	description: "Free slow downloads from Anna's Archive. No account or API key needed.",
 	contentType: "books",
@@ -266,6 +266,16 @@ __cinderExport = {
 					continue;
 				}
 
+				// Log what we got for debugging
+				var snippet = slowResp.data.substring(0, 300).replace(/\s+/g, " ");
+				cinder.log("[AA] HTML snippet (" + slowResp.data.length + " chars): " + snippet);
+
+				// Check if we got a DDoS-Guard challenge instead of the real page
+				if (slowResp.data.indexOf("DDoS-Guard") !== -1 && slowResp.data.indexOf("Download") === -1) {
+					cinder.warn("[AA] Got DDoS-Guard challenge page, not real content. Trying next link...");
+					continue;
+				}
+
 				var slowDoc = cinder.parseHTML(slowResp.data);
 				var downloadUrl = null;
 
@@ -312,6 +322,8 @@ __cinderExport = {
 							if (candidateUrl.indexOf("apple.com") !== -1) continue;
 							if (candidateUrl.indexOf("google.com") !== -1) continue;
 							if (candidateUrl.indexOf("facebook.com") !== -1) continue;
+							if (candidateUrl.indexOf("t.me") !== -1) continue;
+							if (candidateUrl.indexOf("telegram") !== -1) continue;
 							if (candidateUrl.indexOf("github.com") !== -1) continue;
 							if (candidateUrl.indexOf("twitter.com") !== -1) continue;
 							if (candidateUrl.indexOf("reddit.com") !== -1) continue;
@@ -345,6 +357,8 @@ __cinderExport = {
 						if (extHref.indexOf("apple.com") !== -1) continue;
 						if (extHref.indexOf("google.com") !== -1) continue;
 						if (extHref.indexOf("facebook.com") !== -1) continue;
+						if (extHref.indexOf("t.me") !== -1) continue;
+						if (extHref.indexOf("telegram") !== -1) continue;
 						if (extHref.indexOf("github.com") !== -1) continue;
 						if (extHref.indexOf("twitter.com") !== -1) continue;
 						if (extHref.indexOf("reddit.com") !== -1) continue;
