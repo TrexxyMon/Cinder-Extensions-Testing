@@ -9,7 +9,7 @@
 __cinderExport = {
 	id: "annas-archive-slow",
 	name: "Anna's Archive (Slow)",
-	version: "1.4.0",
+	version: "1.5.0",
 	icon: "📚",
 	description: "Free slow downloads from Anna's Archive. No account or API key needed.",
 	contentType: "books",
@@ -224,23 +224,29 @@ __cinderExport = {
 			cinder.log("[AA] Constructed 8 fallback slow links");
 		}
 
-		// Step 3: Prefer no-waitlist links (indices 5-7)
-		var noWaitlist = [];
-		var waitlist = [];
+		// Step 3: Order links smartly
+		// Indices 5,7 give clickable download links (best)
+		// Indices 6,8 give copy-paste URLs only (buttons/text)
+		// Indices 0-4 require waitlist (worst)
+		var clickable = []; // 5, 7
+		var copyPaste = []; // 6, 8
+		var waitlist = [];  // 0-4
 		for (var j = 0; j < slowLinks.length; j++) {
 			var indexMatch = slowLinks[j].match(/\/(\d+)$/);
 			var linkIndex = indexMatch ? parseInt(indexMatch[1]) : j;
-			if (linkIndex >= 5) {
-				noWaitlist.push(slowLinks[j]);
+			if (linkIndex === 5 || linkIndex === 7) {
+				clickable.push(slowLinks[j]);
+			} else if (linkIndex === 6 || linkIndex === 8) {
+				copyPaste.push(slowLinks[j]);
 			} else {
 				waitlist.push(slowLinks[j]);
 			}
 		}
-		var orderedLinks = noWaitlist.concat(waitlist);
-		cinder.log("[AA] Trying " + noWaitlist.length + " no-waitlist + " + waitlist.length + " waitlist");
+		var orderedLinks = clickable.concat(copyPaste).concat(waitlist);
+		cinder.log("[AA] Order: " + clickable.length + " clickable, " + copyPaste.length + " copy-paste, " + waitlist.length + " waitlist");
 
 		// Step 4: For each slow link, use fetchBrowser (DDoS-Guard + JS countdown)
-		// The slow download page has a 5s JS countdown, then reveals a "📚 Download now" link
+		// The slow download page has a 5s JS countdown, then reveals download link
 		var lastError = null;
 		var baseUrl = await this._getBaseUrl();
 
@@ -263,24 +269,71 @@ __cinderExport = {
 				var slowDoc = cinder.parseHTML(slowResp.data);
 				var downloadUrl = null;
 
-				// Strategy 1: Look for the "📚 Download now" link (the real download)
+				// Strategy 1: Look for "📚 Download now" anchor (servers 5, 7)
 				var allAnchors = slowDoc.querySelectorAll("a");
 				for (var a = 0; a < allAnchors.length; a++) {
 					var anchorText = allAnchors[a].text() || "";
 					var anchorHref = allAnchors[a].attr("href") || "";
 					if (anchorText.indexOf("Download now") !== -1 && anchorHref.indexOf("http") === 0) {
-						downloadUrl = anchorHref;
-						cinder.log("[AA] Found 'Download now' link: " + downloadUrl);
-						break;
+						// Make sure it's not an AA internal link
+						if (anchorHref.indexOf("annas-archive") === -1) {
+							downloadUrl = anchorHref;
+							cinder.log("[AA] Found 'Download now' link: " + downloadUrl);
+							break;
+						}
 					}
 				}
 
-				// Strategy 2: Look for external partner links (e.g., wbsg8v.xyz)
+				// Strategy 2: Look for URLs in button text (servers 6, 8 — copy-paste)
+				if (!downloadUrl) {
+					var buttons = slowDoc.querySelectorAll("button");
+					for (var b = 0; b < buttons.length; b++) {
+						var btnText = buttons[b].text() || "";
+						var urlInBtn = btnText.match(/https?:\/\/[^\s<>"]+/);
+						if (urlInBtn && urlInBtn[0].indexOf("annas-archive") === -1) {
+							downloadUrl = urlInBtn[0];
+							cinder.log("[AA] Found URL in button: " + downloadUrl);
+							break;
+						}
+					}
+				}
+
+				// Strategy 3: Look for bare URLs in page text (copy-paste servers)
+				if (!downloadUrl) {
+					var bodyText = slowResp.data;
+					// Find URLs that look like partner download links
+					var urlMatches = bodyText.match(/https?:\/\/[a-z0-9]+\.[a-z]+\/[^\s<>"']+/gi);
+					if (urlMatches) {
+						for (var u = 0; u < urlMatches.length; u++) {
+							var candidateUrl = urlMatches[u];
+							if (candidateUrl.indexOf("annas-archive") !== -1) continue;
+							if (candidateUrl.indexOf("cloudflare") !== -1) continue;
+							if (candidateUrl.indexOf("ddos-guard") !== -1) continue;
+							if (candidateUrl.indexOf("apple.com") !== -1) continue;
+							if (candidateUrl.indexOf("google.com") !== -1) continue;
+							if (candidateUrl.indexOf("facebook.com") !== -1) continue;
+							if (candidateUrl.indexOf("motrix") !== -1) continue;
+							if (candidateUrl.indexOf("readera") !== -1) continue;
+							if (candidateUrl.indexOf("calibre") !== -1) continue;
+							if (candidateUrl.indexOf("printfriendly") !== -1) continue;
+							if (candidateUrl.indexOf("cloudconvert") !== -1) continue;
+							if (candidateUrl.indexOf("w3.org") !== -1) continue;
+							if (candidateUrl.indexOf("schema.org") !== -1) continue;
+							if (candidateUrl.indexOf("jsdelivr") !== -1) continue;
+							if (candidateUrl.indexOf("cdnjs") !== -1) continue;
+							// Likely the partner download link
+							downloadUrl = candidateUrl;
+							cinder.log("[AA] Found URL in page text: " + downloadUrl);
+							break;
+						}
+					}
+				}
+
+				// Strategy 4: External anchor links as last resort
 				if (!downloadUrl) {
 					var extLinks = slowDoc.querySelectorAll("a[href^='http']");
 					for (var e = 0; e < extLinks.length; e++) {
 						var extHref = extLinks[e].attr("href") || "";
-						// Skip known non-download domains
 						if (extHref.indexOf("annas-archive") !== -1) continue;
 						if (extHref.indexOf("cloudflare") !== -1) continue;
 						if (extHref.indexOf("apple.com") !== -1) continue;
@@ -293,30 +346,9 @@ __cinderExport = {
 						if (extHref.indexOf("cloudconvert") !== -1) continue;
 						if (extHref.indexOf("ddos-guard") !== -1) continue;
 						if (extHref.indexOf("#") === 0) continue;
-						// This is likely the partner download link
 						downloadUrl = extHref;
-						cinder.log("[AA] Found partner link: " + downloadUrl);
+						cinder.log("[AA] Found external link: " + downloadUrl);
 						break;
-					}
-				}
-
-				// Strategy 3: Check for file extension in any link
-				if (!downloadUrl) {
-					var fileSelectors = [
-						"a[href*='.epub']", "a[href*='.pdf']",
-						"a[href*='.mobi']", "a[href*='.azw3']",
-						"a[href*='.cbz']",
-					];
-					for (var s = 0; s < fileSelectors.length; s++) {
-						var fileLinks = slowDoc.querySelectorAll(fileSelectors[s]);
-						if (fileLinks.length > 0) {
-							var fHref = fileLinks[0].attr("href") || "";
-							if (fHref.length > 10) {
-								downloadUrl = fHref;
-								cinder.log("[AA] Found file link: " + downloadUrl);
-								break;
-							}
-						}
 					}
 				}
 
