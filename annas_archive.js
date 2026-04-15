@@ -9,7 +9,7 @@
 __cinderExport = {
 	id: "annas-archive-slow",
 	name: "Anna's Archive (Slow)",
-	version: "1.5.3",
+	version: "1.5.4",
 	icon: "📚",
 	description: "Free slow downloads from Anna's Archive. No account or API key needed.",
 	contentType: "books",
@@ -279,12 +279,32 @@ __cinderExport = {
 				var slowDoc = cinder.parseHTML(slowResp.data);
 				var downloadUrl = null;
 
-				// Strategy 0: Regex on raw HTML for the download link
+				// Strategy 0: Regex on raw HTML for the "Download now" anchor
 				// Most reliable — parseHTML can choke on 178KB pages with Dark Reader injection
 				var dnMatch = slowResp.data.match(/href="(https?:\/\/[^"]+)"[^>]*>[^<]*Download now/i);
 				if (dnMatch && dnMatch[1] && dnMatch[1].indexOf("annas-archive") === -1) {
 					downloadUrl = dnMatch[1];
 					cinder.log("[AA] ✅ Found download link via regex: " + downloadUrl);
+				}
+
+				// Strategy 0.5: clipboard.writeText URL extraction
+				// Copy-paste servers (6, 8) have no "Download now" anchor.
+				// The URL lives inside: navigator.clipboard.writeText('http://...')
+				if (!downloadUrl) {
+					var clipMatches = slowResp.data.match(/clipboard\.writeText\(['"]([^'"]+)['"]\)/g);
+					if (clipMatches) {
+						for (var cm = 0; cm < clipMatches.length; cm++) {
+							var clipInner = clipMatches[cm].match(/clipboard\.writeText\(['"]([^'"]+)['"]\)/);
+							if (clipInner && clipInner[1] && clipInner[1].match(/^https?:\/\//)) {
+								var clipUrl = clipInner[1];
+								if (clipUrl.indexOf("annas-archive") === -1) {
+									downloadUrl = clipUrl;
+									cinder.log("[AA] ✅ Found download link via clipboard: " + downloadUrl);
+									break;
+								}
+							}
+						}
+					}
 				}
 
 				// Strategy 1: Look for "📚 Download now" anchor via DOM (fallback)
@@ -321,7 +341,7 @@ __cinderExport = {
 				if (!downloadUrl) {
 					var bodyText = slowResp.data;
 					// Find URLs that look like partner download links
-					var urlMatches = bodyText.match(/https?:\/\/[a-z0-9]+\.[a-z]+\/[^\s<>"']+/gi);
+					var urlMatches = bodyText.match(/https?:\/\/[a-z0-9.-]+(:\d+)?\/[^\s<>"']+/gi);
 					if (urlMatches) {
 						for (var u = 0; u < urlMatches.length; u++) {
 							var candidateUrl = urlMatches[u];
@@ -348,6 +368,13 @@ __cinderExport = {
 							if (candidateUrl.indexOf("schema.org") !== -1) continue;
 							if (candidateUrl.indexOf("jsdelivr") !== -1) continue;
 							if (candidateUrl.indexOf("cdnjs") !== -1) continue;
+							if (candidateUrl.indexOf("matrix.to") !== -1) continue;
+							if (candidateUrl.indexOf("open-slum") !== -1) continue;
+							if (candidateUrl.indexOf("archivecommunication") !== -1) continue;
+							if (candidateUrl.indexOf("translate.annas") !== -1) continue;
+							if (candidateUrl.indexOf("software.annas") !== -1) continue;
+							if (candidateUrl.indexOf("torrentfreak") !== -1) continue;
+							if (candidateUrl.indexOf("covers.z-lib") !== -1) continue;
 							// Likely the partner download link
 							downloadUrl = candidateUrl;
 							cinder.log("[AA] Found URL in page text: " + downloadUrl);
@@ -378,6 +405,13 @@ __cinderExport = {
 						if (extHref.indexOf("readera") !== -1) continue;
 						if (extHref.indexOf("calibre") !== -1) continue;
 						if (extHref.indexOf("printfriendly") !== -1) continue;
+						if (extHref.indexOf("matrix.to") !== -1) continue;
+						if (extHref.indexOf("open-slum") !== -1) continue;
+						if (extHref.indexOf("archivecommunication") !== -1) continue;
+						if (extHref.indexOf("translate.annas") !== -1) continue;
+						if (extHref.indexOf("software.annas") !== -1) continue;
+						if (extHref.indexOf("torrentfreak") !== -1) continue;
+						if (extHref.indexOf("covers.z-lib") !== -1) continue;
 						if (extHref.indexOf("cloudconvert") !== -1) continue;
 						if (extHref.indexOf("ddos-guard") !== -1) continue;
 						if (extHref.indexOf("#") === 0) continue;
