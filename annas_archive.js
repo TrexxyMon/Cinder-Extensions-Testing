@@ -286,9 +286,9 @@ __cinderExport = {
 					var downloadUrl = this._extractDownloadUrl(fastResp.data);
 					if (downloadUrl) {
 						cinder.log("[AA] 🚀 Fast download resolved: " + downloadUrl.substring(0, 80));
+						// No debridLink — AA key is faster than TorBox, don't let it intercept
 						return {
 							url: downloadUrl,
-							debridLink: debridLink,
 							headers: {
 								"Referer": fastUrl,
 								"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
