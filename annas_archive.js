@@ -9,7 +9,7 @@
 __cinderExport = {
 	id: "annas-archive-slow",
 	name: "Anna's Archive (Slow)",
-	version: "1.6.0",
+	version: "1.6.1",
 	icon: "📚",
 	description: "Free slow downloads from Anna's Archive. No account or API key needed.",
 	contentType: "books",
@@ -165,8 +165,13 @@ __cinderExport = {
 					var line = lines[j];
 					var formatMatch = line.match(/\b(epub|pdf|mobi|azw3|cbz|cbr|fb2|djvu)\b/i);
 					if (formatMatch && !fileFormat) fileFormat = formatMatch[1].toLowerCase();
-					var sizeMatch = line.match(/(\d+\.?\d*\s*[KMG]B)/i);
-					if (sizeMatch && !size) size = sizeMatch[1];
+					var sizeMatch = line.match(/(\d+\.?\d*\s*[KMGi]i?B)/i);
+					if (sizeMatch && !size) size = sizeMatch[1].replace(/\s+/g, "");
+				}
+				// Fallback: scan full text for size (handles inline/non-line-separated layouts)
+				if (!size) {
+					var fullSizeMatch = fullText.match(/(\d+\.?\d*\s*[KMGi]i?B)/i);
+					if (fullSizeMatch) size = fullSizeMatch[1].replace(/\s+/g, "");
 				}
 
 				if (lines.length > 0) title = lines[0];
