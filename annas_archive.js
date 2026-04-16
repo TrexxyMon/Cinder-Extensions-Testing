@@ -310,9 +310,9 @@ __cinderExport = {
 				var libgenResult = await this._tryLibgenCDN(md5);
 				if (libgenResult) {
 					cinder.log("[AA] 🚀 Libgen CDN resolved: " + libgenResult.substring(0, 80));
+					// No debridLink — Libgen CDN is full speed and free, no need for TorBox
 					return {
 						url: libgenResult,
-						debridLink: debridLink,
 						headers: {
 							"Referer": "https://library.lol/",
 							"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
