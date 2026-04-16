@@ -9,7 +9,7 @@
 __cinderExport = {
 	id: "annas-archive-slow",
 	name: "Anna's Archive (Slow)",
-	version: "1.5.9",
+	version: "1.6.0",
 	icon: "📚",
 	description: "Free slow downloads from Anna's Archive. No account or API key needed.",
 	contentType: "books",
@@ -179,13 +179,16 @@ __cinderExport = {
 				var coverImg = link.querySelector("img");
 				var cover = coverImg ? (coverImg.attr("src") || "") : "";
 
-				if (title && fileFormat) {
+				if (title) {
+					// Skip if we explicitly detected an unsupported format
+					var supported = this._SUPPORTED_FORMATS;
+					if (fileFormat && supported.indexOf(fileFormat) === -1) continue;
 					results.push({
 						id: md5,
 						title: title,
 						author: author,
 						cover: cover,
-						format: fileFormat,
+						format: fileFormat || "epub", // unknown = treat as epub
 						size: size,
 						url: md5,
 						source: "Anna's Archive",
@@ -196,14 +199,7 @@ __cinderExport = {
 			}
 		}
 
-		cinder.log("[AA] Parsed " + results.length + " results");
-
-		// Filter to supported formats only — don't present fb2/azw3/djvu to users
-		var supported = this._SUPPORTED_FORMATS;
-		results = results.filter(function(r) {
-			return supported.indexOf(r.format) !== -1;
-		});
-		cinder.log("[AA] After format filter: " + results.length + " results (epub/pdf only)");
+		cinder.log("[AA] Parsed " + results.length + " results (epub/pdf only)");
 		return results;
 	},
 
