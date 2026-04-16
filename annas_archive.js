@@ -9,7 +9,7 @@
 __cinderExport = {
 	id: "annas-archive-slow",
 	name: "Anna's Archive (Slow)",
-	version: "1.5.4",
+	version: "1.5.5",
 	icon: "📚",
 	description: "Free slow downloads from Anna's Archive. No account or API key needed.",
 	contentType: "books",
@@ -59,6 +59,9 @@ __cinderExport = {
 		"annas-archive.se",
 		"annas-archive.li",
 	],
+
+	// Formats Cinder can actually read
+	_SUPPORTED_FORMATS: ["epub", "pdf"],
 
 	_getBaseUrl: async function() {
 		var pref = await cinder.store.get("preferred_domain");
@@ -426,6 +429,18 @@ __cinderExport = {
 					if (downloadUrl.indexOf("http") !== 0) {
 						downloadUrl = baseUrl + downloadUrl;
 					}
+
+					// Validate file format — skip unsupported types (fb2, djvu, etc.)
+					var decodedUrl = decodeURIComponent(downloadUrl).toLowerCase();
+					var extMatch = decodedUrl.match(/\.(epub|pdf|fb2|mobi|azw3?|djvu|cbz|cbr|txt)(?:\?|$)/);
+					if (extMatch) {
+						var fileExt = extMatch[1];
+						if (this._SUPPORTED_FORMATS.indexOf(fileExt) === -1) {
+							cinder.warn("[AA] ⚠️ Skipping unsupported format '" + fileExt + "' on link " + (k+1) + ", trying next mirror...");
+							continue;
+						}
+					}
+
 					cinder.log("[AA] ✅ Resolved: " + downloadUrl);
 					return {
 						url: downloadUrl,
