@@ -9,7 +9,7 @@
 __cinderExport = {
 	id: "annas-archive-slow",
 	name: "Anna's Archive (Slow)",
-	version: "1.5.8",
+	version: "1.5.9",
 	icon: "📚",
 	description: "Free slow downloads from Anna's Archive. No account or API key needed.",
 	contentType: "books",
@@ -179,13 +179,13 @@ __cinderExport = {
 				var coverImg = link.querySelector("img");
 				var cover = coverImg ? (coverImg.attr("src") || "") : "";
 
-				if (title) {
+				if (title && fileFormat) {
 					results.push({
 						id: md5,
 						title: title,
 						author: author,
 						cover: cover,
-						format: fileFormat || "epub",
+						format: fileFormat,
 						size: size,
 						url: md5,
 						source: "Anna's Archive",
