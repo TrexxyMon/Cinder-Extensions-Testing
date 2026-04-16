@@ -9,7 +9,7 @@
 __cinderExport = {
 	id: "annas-archive-slow",
 	name: "Anna's Archive (Slow)",
-	version: "1.5.7",
+	version: "1.5.8",
 	icon: "📚",
 	description: "Free slow downloads from Anna's Archive. No account or API key needed.",
 	contentType: "books",
@@ -197,6 +197,13 @@ __cinderExport = {
 		}
 
 		cinder.log("[AA] Parsed " + results.length + " results");
+
+		// Filter to supported formats only — don't present fb2/azw3/djvu to users
+		var supported = this._SUPPORTED_FORMATS;
+		results = results.filter(function(r) {
+			return supported.indexOf(r.format) !== -1;
+		});
+		cinder.log("[AA] After format filter: " + results.length + " results (epub/pdf only)");
 		return results;
 	},
 
@@ -388,6 +395,7 @@ __cinderExport = {
 							if (candidateUrl.indexOf("software.annas") !== -1) continue;
 							if (candidateUrl.indexOf("torrentfreak") !== -1) continue;
 							if (candidateUrl.indexOf("covers.z-lib") !== -1) continue;
+							if (candidateUrl.indexOf("jdownloader") !== -1) continue;
 							// Likely the partner download link
 							downloadUrl = candidateUrl;
 							cinder.log("[AA] Found URL in page text: " + downloadUrl);
@@ -427,7 +435,11 @@ __cinderExport = {
 						if (extHref.indexOf("covers.z-lib") !== -1) continue;
 						if (extHref.indexOf("cloudconvert") !== -1) continue;
 						if (extHref.indexOf("ddos-guard") !== -1) continue;
+						if (extHref.indexOf("jdownloader") !== -1) continue;
 						if (extHref.indexOf("#") === 0) continue;
+						// Only accept links that look like direct file downloads (epub/pdf)
+						var extLower = extHref.toLowerCase();
+						if (extLower.indexOf(".epub") === -1 && extLower.indexOf(".pdf") === -1) continue;
 						downloadUrl = extHref;
 						cinder.log("[AA] Found external link: " + downloadUrl);
 						break;
