@@ -1,30 +1,42 @@
-// ─── Anna's Archive Slow Download Extension ──────────────────
+// ─── Anna's Archive Download Extension v2.0.0 ──────────────────
 //
-// Searches Anna's Archive and resolves free "slow download" links
-// directly on the user's device. No VPS, no API key, no subscription.
+// Multi-strategy download accelerator for Anna's Archive.
 //
-// Strategy: Uses plain HTTP fetch first (fast, no ads). Falls back
-// to browser-based fetch ONLY when Cloudflare blocks the request.
+// Resolution order (fastest → slowest):
+//   1. AA Supporter Key → fast_download (instant, no queue)
+//   2. Library.lol CDN  → direct link from Libgen mirrors (fast CDN)
+//   3. Parallel Mirror Race → start 2-3 slow mirrors simultaneously
+//   4. Sequential Slow Download → classic single-mirror fallback
+//
+// TorBox integration: always returns debridLink for TorBox users.
 
 __cinderExport = {
 	id: "annas-archive-slow",
-	name: "Anna's Archive (Slow)",
-	version: "1.6.4",
+	name: "Anna's Archive",
+	version: "2.0.0",
 	icon: "📚",
-	description: "Free slow downloads from Anna's Archive. No account or API key needed.",
+	description: "Fast downloads from Anna's Archive with multiple acceleration strategies.",
 	contentType: "books",
 
 	capabilities: {
-		search: true,           // Has search() method
+		search: true,
 		discover: false,
 		download: false,
-		resolve: true,          // Has resolve() for multi-step download
-		searchDownloads: true,  // Shows in "Search Downloads" on book detail
+		resolve: true,
+		searchDownloads: true,
 		manga: false,
 	},
 
 	getSettings: function() {
 		return [
+			{
+				id: "aa_supporter_key",
+				label: "AA Supporter Key (Optional)",
+				type: "text",
+				defaultValue: "",
+				placeholder: "Paste your supporter secret key",
+				description: "From annas-archive.se/account. Unlocks fast downloads.",
+			},
 			{
 				id: "preferred_format",
 				label: "Preferred Format",
@@ -48,6 +60,26 @@ __cinderExport = {
 					{ label: "annas-archive.li", value: "annas-archive.li" },
 				],
 			},
+			{
+				id: "enable_libgen",
+				label: "Try Libgen CDN First",
+				type: "select",
+				defaultValue: "true",
+				options: [
+					{ label: "Enabled", value: "true" },
+					{ label: "Disabled", value: "false" },
+				],
+			},
+			{
+				id: "enable_mirror_race",
+				label: "Parallel Mirror Racing",
+				type: "select",
+				defaultValue: "true",
+				options: [
+					{ label: "Enabled", value: "true" },
+					{ label: "Disabled", value: "false" },
+				],
+			},
 		];
 	},
 
@@ -60,8 +92,18 @@ __cinderExport = {
 		"annas-archive.li",
 	],
 
-	// Formats Cinder can actually read
 	_SUPPORTED_FORMATS: ["epub", "pdf"],
+
+	// Domains to skip when filtering URLs from page text
+	_JUNK_DOMAINS: [
+		"annas-archive", "cloudflare", "ddos-guard", "apple.com", "google.com",
+		"facebook.com", "t.me", "telegram", "github.com", "twitter.com",
+		"reddit.com", "wikipedia.org", "mozilla.org", "darkreader", "motrix",
+		"readera", "calibre", "printfriendly", "cloudconvert", "w3.org",
+		"schema.org", "jsdelivr", "cdnjs", "matrix.to", "open-slum",
+		"archivecommunication", "translate.annas", "software.annas",
+		"torrentfreak", "covers.z-lib", "jdownloader",
+	],
 
 	_getBaseUrl: async function() {
 		var pref = await cinder.store.get("preferred_domain");
@@ -69,7 +111,6 @@ __cinderExport = {
 		return "https://" + this._BASE_DOMAINS[0];
 	},
 
-	// Smart fetch: try plain HTTP first (no ads/popups), fall back to browser only if Cloudflare blocks
 	_smartFetch: async function(url) {
 		try {
 			var resp = await cinder.fetch(url, {
@@ -80,7 +121,6 @@ __cinderExport = {
 				},
 			});
 
-			// Check for Cloudflare challenge (403 or short challenge page)
 			if (resp.status === 403 || (resp.data && resp.data.indexOf("cf-challenge") !== -1) || (resp.data && resp.data.length < 500 && resp.data.indexOf("challenge") !== -1)) {
 				cinder.log("[AA] Cloudflare detected, falling back to browser fetch for: " + url);
 				return await cinder.fetchBrowser(url);
@@ -91,7 +131,6 @@ __cinderExport = {
 			}
 
 			cinder.warn("[AA] Unexpected status " + resp.status + " for: " + url);
-			// Try browser as fallback for unexpected responses
 			return await cinder.fetchBrowser(url);
 		} catch (err) {
 			cinder.warn("[AA] fetch failed, trying browser: " + err);
@@ -124,6 +163,15 @@ __cinderExport = {
 			}
 		}
 		throw lastErr || new Error("All domains failed for path: " + path);
+	},
+
+	// Check if a URL is a junk/social link
+	_isJunkUrl: function(url) {
+		var lower = url.toLowerCase();
+		for (var i = 0; i < this._JUNK_DOMAINS.length; i++) {
+			if (lower.indexOf(this._JUNK_DOMAINS[i]) !== -1) return true;
+		}
+		return false;
 	},
 
 	// ── Search ──
@@ -161,20 +209,14 @@ __cinderExport = {
 				var fileFormat = "";
 				var size = "";
 
-				// Anna's Archive structures search results with the size/format metadata outside the title link.
-				// To reliably extract it, we find the container block in the raw HTML string using the md5.
 				var titleLinkStr = '<a href="/md5/' + md5 + '"';
 				var idx = resp.data.indexOf(titleLinkStr);
-				// The first hit is usually the cover link (same href), advance to the second
 				idx = resp.data.indexOf(titleLinkStr, idx + 10);
 				
 				if (idx !== -1) {
 					var rawBlock = resp.data.substring(idx, idx + 4000);
-					var cleanText = rawBlock.replace(/<[^>]+>/g, ' '); // Strip HTML tags
+					var cleanText = rawBlock.replace(/<[^>]+>/g, ' ');
 					
-					// AA typically isolates metadata with a middle dot separator:
-					// e.g. "English [en] · EPUB · 8.1MB · 2010"
-					// Isolating this exact line prevents false positives (e.g. .epub in a filename string above)
 					var metaLineMatch = cleanText.match(/([^\n·]+·[^\n·]+·[^\n·]*(?:MB|KB|GB|KiB|MiB)[^\n]*)/i);
 					var searchTarget = metaLineMatch ? metaLineMatch[1] : cleanText;
 
@@ -196,7 +238,6 @@ __cinderExport = {
 				var cover = coverImg ? (coverImg.attr("src") || "") : "";
 
 				if (title) {
-					// Skip if we explicitly detected an unsupported format
 					var supported = this._SUPPORTED_FORMATS;
 					if (fileFormat && supported.indexOf(fileFormat) === -1) continue;
 					results.push({
@@ -204,7 +245,7 @@ __cinderExport = {
 						title: title,
 						author: author,
 						cover: cover,
-						format: fileFormat || "epub", // unknown = treat as epub
+						format: fileFormat || "epub",
 						size: size,
 						url: md5,
 						source: "Anna's Archive",
@@ -219,18 +260,75 @@ __cinderExport = {
 		return results;
 	},
 
-	// ── Resolve ──
+	// ═══════════════════════════════════════════════════════════
+	// ── Resolve: Multi-Strategy Download Accelerator ──
+	// ═══════════════════════════════════════════════════════════
 
 	resolve: async function(item) {
 		var md5 = item.url || item.id;
 		cinder.log("[AA] Resolving md5: " + md5);
 
-		// Step 1: Load book detail page to find slow download links
+		var debridLink = "https://annas-archive.gl/md5/" + md5;
+
+		// ── Strategy 1: AA Supporter Key (fast_download) ──
+		try {
+			var supporterKey = await cinder.store.get("aa_supporter_key");
+			if (supporterKey && supporterKey.trim()) {
+				supporterKey = supporterKey.trim();
+				cinder.log("[AA] 🔑 Trying fast_download with supporter key...");
+				var baseUrl = await this._getBaseUrl();
+
+				// Try fast_download endpoint — no queue, instant download
+				var fastUrl = baseUrl + "/fast_download/" + md5 + "/0/2?secret=" + encodeURIComponent(supporterKey);
+				var fastResp = await this._smartFetch(fastUrl);
+
+				if (fastResp.status === 200 && fastResp.data && fastResp.data.length > 500) {
+					var downloadUrl = this._extractDownloadUrl(fastResp.data);
+					if (downloadUrl) {
+						cinder.log("[AA] 🚀 Fast download resolved: " + downloadUrl.substring(0, 80));
+						return {
+							url: downloadUrl,
+							debridLink: debridLink,
+							headers: {
+								"Referer": fastUrl,
+								"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
+							},
+						};
+					}
+				}
+				cinder.warn("[AA] Fast download failed (status " + fastResp.status + "), falling through to other strategies");
+			}
+		} catch (fastErr) {
+			cinder.warn("[AA] Fast download error: " + fastErr);
+		}
+
+		// ── Strategy 2: Library.lol / Libgen CDN First-Pass ──
+		var enableLibgen = await cinder.store.get("enable_libgen");
+		if (enableLibgen !== "false") {
+			try {
+				cinder.log("[AA] 📖 Trying Library.lol CDN for md5: " + md5);
+				var libgenResult = await this._tryLibgenCDN(md5);
+				if (libgenResult) {
+					cinder.log("[AA] 🚀 Libgen CDN resolved: " + libgenResult.substring(0, 80));
+					return {
+						url: libgenResult,
+						debridLink: debridLink,
+						headers: {
+							"Referer": "https://library.lol/",
+							"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
+						},
+					};
+				}
+			} catch (libErr) {
+				cinder.warn("[AA] Libgen CDN failed: " + libErr);
+			}
+		}
+
+		// ── Load detail page to find slow download links ──
 		var detailPath = "/md5/" + md5;
 		var detailResp = await this._fetchWithFallback(detailPath);
 		var detailDoc = cinder.parseHTML(detailResp.data);
 
-		// Step 2: Find slow download links on the detail page
 		var slowLinks = [];
 		var allLinks = detailDoc.querySelectorAll("a[href*='/slow_download/']");
 		for (var i = 0; i < allLinks.length; i++) {
@@ -246,14 +344,10 @@ __cinderExport = {
 			cinder.log("[AA] Constructed 8 fallback slow links");
 		}
 
-		// Step 3: Order links smartly — prefer HTTPS mirrors first
-		// Index 6: "Download now" anchor → HTTPS (momot.rs) — BEST
-		// Index 8: "Download now" anchor → HTTPS (alternate) — GOOD
-		// Indices 5, 7: clipboard copy-paste only → HTTP raw IP — SLOW (iOS blocks)
-		// Indices 0-4: waitlist — worst
-		var httpsAnchors = []; // 6, 8 — have a proper Download now anchor with HTTPS
-		var copyPaste = [];   // 5, 7 — clipboard HTTP only (iOS blocks)
-		var waitlist = [];    // 0-4
+		// Order links: HTTPS anchors (6, 8) first, then copy-paste (5, 7), then waitlist (0-4)
+		var httpsAnchors = [];
+		var copyPaste = [];
+		var waitlist = [];
 		for (var j = 0; j < slowLinks.length; j++) {
 			var indexMatch = slowLinks[j].match(/\/(\d+)$/);
 			var linkIndex = indexMatch ? parseInt(indexMatch[1]) : j;
@@ -268,20 +362,40 @@ __cinderExport = {
 		var orderedLinks = httpsAnchors.concat(copyPaste).concat(waitlist);
 		cinder.log("[AA] Order: " + httpsAnchors.length + " https-anchor, " + copyPaste.length + " copy-paste, " + waitlist.length + " waitlist");
 
-		// Step 4: For each slow link, use fetchBrowser (DDoS-Guard + JS countdown)
-		// The slow download page has a 5s JS countdown, then reveals download link
-		var lastError = null;
 		var baseUrl = await this._getBaseUrl();
+
+		// ── Strategy 3: Parallel Mirror Race ──
+		var enableRace = await cinder.store.get("enable_mirror_race");
+		if (enableRace !== "false" && httpsAnchors.length >= 2) {
+			try {
+				cinder.log("[AA] 🏁 Starting parallel mirror race with " + httpsAnchors.length + " HTTPS mirrors...");
+				var raceResult = await this._raceMirrors(httpsAnchors, baseUrl);
+				if (raceResult) {
+					cinder.log("[AA] 🚀 Mirror race winner: " + raceResult.url.substring(0, 80));
+					return {
+						url: raceResult.url,
+						debridLink: debridLink,
+						headers: {
+							"Referer": raceResult.referer,
+							"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
+						},
+					};
+				}
+			} catch (raceErr) {
+				cinder.warn("[AA] Mirror race failed: " + raceErr);
+			}
+		}
+
+		// ── Strategy 4: Sequential Slow Download (original fallback) ──
+		cinder.log("[AA] 🐢 Falling back to sequential slow download...");
+		var lastError = null;
 
 		for (var k = 0; k < orderedLinks.length; k++) {
 			try {
 				var slowPath = orderedLinks[k];
-				// Make absolute URL
 				var slowUrl = slowPath.indexOf("http") === 0 ? slowPath : baseUrl + slowPath;
 				cinder.log("[AA] Fetching slow link " + (k+1) + ": " + slowUrl);
 
-				// MUST use fetchBrowser — DDoS-Guard blocks plain HTTP,
-				// and the download link only appears after JS countdown
 				var slowResp = await cinder.fetchBrowser(slowUrl);
 
 				if (!slowResp.data || slowResp.data.length < 200) {
@@ -289,202 +403,35 @@ __cinderExport = {
 					continue;
 				}
 
-				// Log what we got for debugging
-				var snippet = slowResp.data.substring(0, 300).replace(/\s+/g, " ");
-				cinder.log("[AA] HTML snippet (" + slowResp.data.length + " chars): " + snippet);
-
-				// Check if we got a DDoS-Guard challenge instead of the real page
 				if (slowResp.data.indexOf("DDoS-Guard") !== -1 && slowResp.data.indexOf("Download") === -1) {
-					cinder.warn("[AA] Got DDoS-Guard challenge page, not real content. Trying next link...");
+					cinder.warn("[AA] Got DDoS-Guard challenge page, trying next...");
 					continue;
 				}
 
-				var slowDoc = cinder.parseHTML(slowResp.data);
-				var downloadUrl = null;
-
-				// Strategy 0: Regex on raw HTML for the "Download now" anchor
-				// Most reliable — parseHTML can choke on 178KB pages with Dark Reader injection
-				var dnMatch = slowResp.data.match(/href="(https?:\/\/[^"]+)"[^>]*>[^<]*Download now/i);
-				if (dnMatch && dnMatch[1] && dnMatch[1].indexOf("annas-archive") === -1) {
-					downloadUrl = dnMatch[1];
-					cinder.log("[AA] ✅ Found download link via regex: " + downloadUrl);
-				}
-
-				// Strategy 0.5: clipboard.writeText URL extraction
-				// Copy-paste servers (6, 8) have no "Download now" anchor.
-				// The URL lives inside: navigator.clipboard.writeText('http://...')
-				// Prefer HTTPS over HTTP (momot.rs > raw IP) since iOS blocks plain HTTP
-				if (!downloadUrl) {
-					var clipMatches = slowResp.data.match(/clipboard\.writeText\(['"]([^'"]+)['"]\)/g);
-					if (clipMatches) {
-						var httpsClip = null;
-						var httpClip = null;
-						for (var cm = 0; cm < clipMatches.length; cm++) {
-							var clipInner = clipMatches[cm].match(/clipboard\.writeText\(['"]([^'"]+)['"]\)/);
-							if (clipInner && clipInner[1] && clipInner[1].match(/^https?:\/\//)) {
-								var clipUrl = clipInner[1];
-								if (clipUrl.indexOf("annas-archive") !== -1) continue;
-								if (clipUrl.indexOf("https://") === 0 && !httpsClip) {
-									httpsClip = clipUrl;
-								} else if (!httpClip) {
-									httpClip = clipUrl;
-								}
-							}
-						}
-						// Prefer HTTPS (works on iOS), fall back to HTTP
-						downloadUrl = httpsClip || httpClip || null;
-						if (downloadUrl) {
-							cinder.log("[AA] ✅ Found download link via clipboard (" + (httpsClip ? "HTTPS" : "HTTP") + "): " + downloadUrl);
-						}
-					}
-				}
-
-				// Strategy 1: Look for "📚 Download now" anchor via DOM (fallback)
-				if (!downloadUrl) {
-					var allAnchors = slowDoc.querySelectorAll("a");
-					for (var a = 0; a < allAnchors.length; a++) {
-						var anchorText = allAnchors[a].text() || "";
-						var anchorHref = allAnchors[a].attr("href") || "";
-						if (anchorText.indexOf("Download now") !== -1 && anchorHref.indexOf("http") === 0) {
-							if (anchorHref.indexOf("annas-archive") === -1) {
-								downloadUrl = anchorHref;
-								cinder.log("[AA] Found 'Download now' anchor: " + downloadUrl);
-								break;
-							}
-						}
-					}
-				}
-
-				// Strategy 2: Look for URLs in button text (servers 6, 8 — copy-paste)
-				if (!downloadUrl) {
-					var buttons = slowDoc.querySelectorAll("button");
-					for (var b = 0; b < buttons.length; b++) {
-						var btnText = buttons[b].text() || "";
-						var urlInBtn = btnText.match(/https?:\/\/[^\s<>"]+/);
-						if (urlInBtn && urlInBtn[0].indexOf("annas-archive") === -1) {
-							downloadUrl = urlInBtn[0];
-							cinder.log("[AA] Found URL in button: " + downloadUrl);
-							break;
-						}
-					}
-				}
-
-				// Strategy 3: Look for bare URLs in page text (copy-paste servers)
-				if (!downloadUrl) {
-					var bodyText = slowResp.data;
-					// Find URLs that look like partner download links
-					var urlMatches = bodyText.match(/https?:\/\/[a-z0-9.-]+(:\d+)?\/[^\s<>"']+/gi);
-					if (urlMatches) {
-						for (var u = 0; u < urlMatches.length; u++) {
-							var candidateUrl = urlMatches[u];
-							if (candidateUrl.indexOf("annas-archive") !== -1) continue;
-							if (candidateUrl.indexOf("cloudflare") !== -1) continue;
-							if (candidateUrl.indexOf("ddos-guard") !== -1) continue;
-							if (candidateUrl.indexOf("apple.com") !== -1) continue;
-							if (candidateUrl.indexOf("google.com") !== -1) continue;
-							if (candidateUrl.indexOf("facebook.com") !== -1) continue;
-							if (candidateUrl.indexOf("t.me") !== -1) continue;
-							if (candidateUrl.indexOf("telegram") !== -1) continue;
-							if (candidateUrl.indexOf("github.com") !== -1) continue;
-							if (candidateUrl.indexOf("twitter.com") !== -1) continue;
-							if (candidateUrl.indexOf("reddit.com") !== -1) continue;
-							if (candidateUrl.indexOf("wikipedia.org") !== -1) continue;
-							if (candidateUrl.indexOf("mozilla.org") !== -1) continue;
-							if (candidateUrl.indexOf("darkreader") !== -1) continue;
-							if (candidateUrl.indexOf("motrix") !== -1) continue;
-							if (candidateUrl.indexOf("readera") !== -1) continue;
-							if (candidateUrl.indexOf("calibre") !== -1) continue;
-							if (candidateUrl.indexOf("printfriendly") !== -1) continue;
-							if (candidateUrl.indexOf("cloudconvert") !== -1) continue;
-							if (candidateUrl.indexOf("w3.org") !== -1) continue;
-							if (candidateUrl.indexOf("schema.org") !== -1) continue;
-							if (candidateUrl.indexOf("jsdelivr") !== -1) continue;
-							if (candidateUrl.indexOf("cdnjs") !== -1) continue;
-							if (candidateUrl.indexOf("matrix.to") !== -1) continue;
-							if (candidateUrl.indexOf("open-slum") !== -1) continue;
-							if (candidateUrl.indexOf("archivecommunication") !== -1) continue;
-							if (candidateUrl.indexOf("translate.annas") !== -1) continue;
-							if (candidateUrl.indexOf("software.annas") !== -1) continue;
-							if (candidateUrl.indexOf("torrentfreak") !== -1) continue;
-							if (candidateUrl.indexOf("covers.z-lib") !== -1) continue;
-							if (candidateUrl.indexOf("jdownloader") !== -1) continue;
-							// Likely the partner download link
-							downloadUrl = candidateUrl;
-							cinder.log("[AA] Found URL in page text: " + downloadUrl);
-							break;
-						}
-					}
-				}
-
-				// Strategy 4: External anchor links as last resort
-				if (!downloadUrl) {
-					var extLinks = slowDoc.querySelectorAll("a[href^='http']");
-					for (var e = 0; e < extLinks.length; e++) {
-						var extHref = extLinks[e].attr("href") || "";
-						if (extHref.indexOf("annas-archive") !== -1) continue;
-						if (extHref.indexOf("cloudflare") !== -1) continue;
-						if (extHref.indexOf("apple.com") !== -1) continue;
-						if (extHref.indexOf("google.com") !== -1) continue;
-						if (extHref.indexOf("facebook.com") !== -1) continue;
-						if (extHref.indexOf("t.me") !== -1) continue;
-						if (extHref.indexOf("telegram") !== -1) continue;
-						if (extHref.indexOf("github.com") !== -1) continue;
-						if (extHref.indexOf("twitter.com") !== -1) continue;
-						if (extHref.indexOf("reddit.com") !== -1) continue;
-						if (extHref.indexOf("wikipedia.org") !== -1) continue;
-						if (extHref.indexOf("mozilla.org") !== -1) continue;
-						if (extHref.indexOf("darkreader") !== -1) continue;
-						if (extHref.indexOf("motrix") !== -1) continue;
-						if (extHref.indexOf("readera") !== -1) continue;
-						if (extHref.indexOf("calibre") !== -1) continue;
-						if (extHref.indexOf("printfriendly") !== -1) continue;
-						if (extHref.indexOf("matrix.to") !== -1) continue;
-						if (extHref.indexOf("open-slum") !== -1) continue;
-						if (extHref.indexOf("archivecommunication") !== -1) continue;
-						if (extHref.indexOf("translate.annas") !== -1) continue;
-						if (extHref.indexOf("software.annas") !== -1) continue;
-						if (extHref.indexOf("torrentfreak") !== -1) continue;
-						if (extHref.indexOf("covers.z-lib") !== -1) continue;
-						if (extHref.indexOf("cloudconvert") !== -1) continue;
-						if (extHref.indexOf("ddos-guard") !== -1) continue;
-						if (extHref.indexOf("jdownloader") !== -1) continue;
-						if (extHref.indexOf("#") === 0) continue;
-						// Only accept links that look like direct file downloads (epub/pdf)
-						var extLower = extHref.toLowerCase();
-						if (extLower.indexOf(".epub") === -1 && extLower.indexOf(".pdf") === -1) continue;
-						downloadUrl = extHref;
-						cinder.log("[AA] Found external link: " + downloadUrl);
-						break;
-					}
-				}
+				var downloadUrl = this._extractDownloadUrl(slowResp.data);
 
 				if (downloadUrl) {
-					// Ensure absolute URL
-					if (downloadUrl.indexOf("http") !== 0) {
-						downloadUrl = baseUrl + downloadUrl;
-					}
-
-					// Validate file format — skip unsupported types (fb2, djvu, etc.)
+					// Validate format
 					var decodedUrl = decodeURIComponent(downloadUrl).toLowerCase();
 					var extMatch = decodedUrl.match(/\.(epub|pdf|fb2|mobi|azw3?|djvu|cbz|cbr|txt)(?:\?|$)/);
 					if (extMatch) {
 						var fileExt = extMatch[1];
 						if (this._SUPPORTED_FORMATS.indexOf(fileExt) === -1) {
-							cinder.warn("[AA] ⚠️ Skipping unsupported format '" + fileExt + "' on link " + (k+1) + ", trying next mirror...");
+							cinder.warn("[AA] ⚠️ Skipping unsupported format '" + fileExt + "' on link " + (k+1));
 							continue;
 						}
 					}
 
-					// Skip plain HTTP URLs — iOS App Transport Security blocks them
+					// Skip plain HTTP (iOS ATS blocks)
 					if (downloadUrl.indexOf("http://") === 0) {
-						cinder.warn("[AA] ⚠️ Skipping plain HTTP URL on link " + (k+1) + " (blocked by iOS ATS), trying next mirror...");
+						cinder.warn("[AA] ⚠️ Skipping plain HTTP on link " + (k+1));
 						continue;
 					}
 
 					cinder.log("[AA] ✅ Resolved: " + downloadUrl);
 					return {
 						url: downloadUrl,
-						debridLink: "https://annas-archive.gl/md5/" + md5,
+						debridLink: debridLink,
 						headers: {
 							"Referer": slowUrl,
 							"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
@@ -492,13 +439,195 @@ __cinderExport = {
 					};
 				}
 
-				cinder.warn("[AA] No download URL found on slow link " + (k+1) + " (HTML length: " + slowResp.data.length + ")");
+				cinder.warn("[AA] No download URL found on slow link " + (k+1));
 			} catch (err) {
 				cinder.warn("[AA] Slow link " + (k+1) + " failed: " + err);
 				lastError = err;
 			}
 		}
 
-		throw lastError || new Error("Could not resolve download. The book may not have free slow download mirrors available.");
+		throw lastError || new Error("Could not resolve download. The book may not have free download mirrors available.");
+	},
+
+	// ═══════════════════════════════════════════════════════════
+	// ── Strategy Helpers ──
+	// ═══════════════════════════════════════════════════════════
+
+	/**
+	 * Strategy 2: Try Library.lol CDN using the MD5 hash.
+	 * Returns the direct download URL or null.
+	 */
+	_tryLibgenCDN: async function(md5) {
+		// Library.lol serves as a redirect page with the actual download link
+		var libUrl = "https://library.lol/main/" + md5;
+		try {
+			var resp = await cinder.fetch(libUrl, {
+				headers: {
+					"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
+					"Accept": "text/html",
+				},
+				timeout: 8000,
+			});
+
+			if (resp.status === 200 && resp.data && resp.data.length > 200) {
+				// Library.lol page has a download link like: <a href="https://download.library.lol/main/...">
+				var dlMatch = resp.data.match(/href="(https?:\/\/download\.library\.lol\/[^"]+)"/i);
+				if (dlMatch && dlMatch[1]) {
+					// Verify link is alive with a quick HEAD-style probe
+					var probeResp = await cinder.fetch(dlMatch[1], {
+						headers: { "Range": "bytes=0-1024" },
+						timeout: 5000,
+					});
+					if (probeResp.status === 200 || probeResp.status === 206) {
+						return dlMatch[1];
+					}
+					cinder.warn("[AA] Library.lol link returned " + probeResp.status);
+				}
+
+				// Also try cloudflare-ipfs or other CDN links on the page
+				var cdnMatch = resp.data.match(/href="(https?:\/\/[^"]*(?:cloudflare-ipfs|ipfs\.io|pinata)[^"]+)"/i);
+				if (cdnMatch && cdnMatch[1]) {
+					cinder.log("[AA] Found IPFS CDN link: " + cdnMatch[1].substring(0, 60));
+					return cdnMatch[1];
+				}
+			}
+		} catch (err) {
+			cinder.warn("[AA] Library.lol fetch failed: " + err);
+		}
+
+		// Try libgen.li as alternate
+		try {
+			var altUrl = "https://libgen.li/ads.php?md5=" + md5;
+			var altResp = await cinder.fetch(altUrl, {
+				headers: { "User-Agent": "Mozilla/5.0", "Accept": "text/html" },
+				timeout: 6000,
+			});
+			if (altResp.status === 200 && altResp.data) {
+				var altMatch = altResp.data.match(/href="(https?:\/\/[^"]*(?:get|download)[^"]+)"/i);
+				if (altMatch && altMatch[1] && altMatch[1].indexOf("libgen") !== -1) {
+					return altMatch[1];
+				}
+			}
+		} catch (err2) {
+			cinder.warn("[AA] libgen.li fallback failed: " + err2);
+		}
+
+		return null;
+	},
+
+	/**
+	 * Strategy 3: Race multiple slow download mirrors simultaneously.
+	 * Resolves all mirror pages at once, returns the first one that yields a download URL.
+	 */
+	_raceMirrors: async function(mirrorPaths, baseUrl) {
+		var self = this;
+		var resolved = false;
+
+		// Create promises for each mirror
+		var promises = mirrorPaths.map(function(path, index) {
+			var slowUrl = path.indexOf("http") === 0 ? path : baseUrl + path;
+			return cinder.fetchBrowser(slowUrl).then(function(resp) {
+				if (resolved) return null; // Another mirror already won
+				if (!resp.data || resp.data.length < 200) return null;
+				if (resp.data.indexOf("DDoS-Guard") !== -1 && resp.data.indexOf("Download") === -1) return null;
+
+				var downloadUrl = self._extractDownloadUrl(resp.data);
+				if (!downloadUrl) return null;
+
+				// Validate: must be HTTPS and supported format
+				if (downloadUrl.indexOf("http://") === 0) return null;
+				var decoded = decodeURIComponent(downloadUrl).toLowerCase();
+				var extMatch = decoded.match(/\.(epub|pdf|fb2|mobi|azw3?|djvu|cbz|cbr|txt)(?:\?|$)/);
+				if (extMatch && self._SUPPORTED_FORMATS.indexOf(extMatch[1]) === -1) return null;
+
+				resolved = true;
+				cinder.log("[AA] 🏆 Mirror " + (index + 1) + " won the race!");
+				return { url: downloadUrl, referer: slowUrl };
+			}).catch(function(err) {
+				cinder.warn("[AA] Mirror " + (index + 1) + " race entry failed: " + err);
+				return null;
+			});
+		});
+
+		// Wait for first non-null result
+		var results = await Promise.all(promises); // Note: can't use Promise.any in sandboxed env
+		for (var i = 0; i < results.length; i++) {
+			if (results[i]) return results[i];
+		}
+		return null;
+	},
+
+	/**
+	 * Extract a download URL from an AA slow_download or fast_download HTML page.
+	 * Consolidates all extraction strategies into one reusable function.
+	 */
+	_extractDownloadUrl: function(html) {
+		var downloadUrl = null;
+
+		// Strategy 0: Regex for "Download now" anchor (most reliable)
+		var dnMatch = html.match(/href="(https?:\/\/[^"]+)"[^>]*>[^<]*Download now/i);
+		if (dnMatch && dnMatch[1] && dnMatch[1].indexOf("annas-archive") === -1) {
+			downloadUrl = dnMatch[1];
+			cinder.log("[AA] Found via 'Download now' regex");
+			return downloadUrl;
+		}
+
+		// Strategy 0.5: clipboard.writeText URL extraction
+		var clipMatches = html.match(/clipboard\.writeText\(['"]([^'"]+)['"]\)/g);
+		if (clipMatches) {
+			var httpsClip = null;
+			var httpClip = null;
+			for (var cm = 0; cm < clipMatches.length; cm++) {
+				var clipInner = clipMatches[cm].match(/clipboard\.writeText\(['"]([^'"]+)['"]\)/);
+				if (clipInner && clipInner[1] && clipInner[1].match(/^https?:\/\//)) {
+					var clipUrl = clipInner[1];
+					if (clipUrl.indexOf("annas-archive") !== -1) continue;
+					if (clipUrl.indexOf("https://") === 0 && !httpsClip) {
+						httpsClip = clipUrl;
+					} else if (!httpClip) {
+						httpClip = clipUrl;
+					}
+				}
+			}
+			downloadUrl = httpsClip || httpClip || null;
+			if (downloadUrl) {
+				cinder.log("[AA] Found via clipboard (" + (httpsClip ? "HTTPS" : "HTTP") + ")");
+				return downloadUrl;
+			}
+		}
+
+		// Strategy 1: DOM-parsed "Download now" anchor
+		var doc = cinder.parseHTML(html);
+		var allAnchors = doc.querySelectorAll("a");
+		for (var a = 0; a < allAnchors.length; a++) {
+			var anchorText = allAnchors[a].text() || "";
+			var anchorHref = allAnchors[a].attr("href") || "";
+			if (anchorText.indexOf("Download now") !== -1 && anchorHref.indexOf("http") === 0) {
+				if (anchorHref.indexOf("annas-archive") === -1) {
+					cinder.log("[AA] Found via DOM anchor");
+					return anchorHref;
+				}
+			}
+		}
+
+		// Strategy 2: Bare URLs in page text (partner download links)
+		var urlMatches = html.match(/https?:\/\/[a-z0-9.-]+(:\d+)?\/[^\s<>"']+/gi);
+		if (urlMatches) {
+			var self = this;
+			for (var u = 0; u < urlMatches.length; u++) {
+				var candidate = urlMatches[u];
+				if (self._isJunkUrl(candidate)) continue;
+				if (candidate.indexOf("#") === 0) continue;
+				// Prefer URLs with file extensions
+				var candidateLower = candidate.toLowerCase();
+				if (candidateLower.indexOf(".epub") !== -1 || candidateLower.indexOf(".pdf") !== -1 ||
+					candidateLower.indexOf("/d3/") !== -1 || candidateLower.indexOf("/download") !== -1) {
+					cinder.log("[AA] Found via URL scan");
+					return candidate;
+				}
+			}
+		}
+
+		return null;
 	},
 };
