@@ -9,7 +9,7 @@
 __cinderExport = {
 	id: "annas-archive-slow",
 	name: "Anna's Archive (Slow)",
-	version: "1.6.1",
+	version: "1.6.2",
 	icon: "📚",
 	description: "Free slow downloads from Anna's Archive. No account or API key needed.",
 	contentType: "books",
@@ -161,17 +161,22 @@ __cinderExport = {
 				var fileFormat = "";
 				var size = "";
 
-				for (var j = 0; j < lines.length; j++) {
-					var line = lines[j];
-					var formatMatch = line.match(/\b(epub|pdf|mobi|azw3|cbz|cbr|fb2|djvu)\b/i);
-					if (formatMatch && !fileFormat) fileFormat = formatMatch[1].toLowerCase();
-					var sizeMatch = line.match(/(\d+\.?\d*\s*[KMGi]i?B)/i);
-					if (sizeMatch && !size) size = sizeMatch[1].replace(/\s+/g, "");
-				}
-				// Fallback: scan full text for size (handles inline/non-line-separated layouts)
-				if (!size) {
-					var fullSizeMatch = fullText.match(/(\d+\.?\d*\s*[KMGi]i?B)/i);
-					if (fullSizeMatch) size = fullSizeMatch[1].replace(/\s+/g, "");
+				// Anna's Archive structures search results with the size/format metadata outside the title link.
+				// To reliably extract it, we find the container block in the raw HTML string using the md5.
+				var titleLinkStr = '<a href="/md5/' + md5 + '"';
+				var idx = resp.data.indexOf(titleLinkStr);
+				// The first hit is usually the cover link (same href), advance to the second
+				idx = resp.data.indexOf(titleLinkStr, idx + 10);
+				
+				if (idx !== -1) {
+					var rawBlock = resp.data.substring(idx, idx + 4000);
+					var cleanText = rawBlock.replace(/<[^>]+>/g, ' '); // Strip HTML tags
+					
+					var formatMatch = cleanText.match(/\b(epub|pdf|mobi|azw3|cbz|cbr|fb2|djvu)\b/i);
+					if (formatMatch) fileFormat = formatMatch[1].toLowerCase();
+					
+					var sizeMatch = cleanText.match(/(\d+\.?\d*\s*[KMGi]i?B)/i);
+					if (sizeMatch) size = sizeMatch[1].replace(/\s+/g, "");
 				}
 
 				if (lines.length > 0) title = lines[0];
