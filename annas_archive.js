@@ -32,10 +32,10 @@ __cinderExport = {
 			{
 				id: "aa_supporter_key",
 				label: "AA Supporter Key (Optional)",
-				type: "text",
+				type: "password",
 				defaultValue: "",
 				placeholder: "Paste your supporter secret key",
-				description: "From annas-archive.se/account. Unlocks fast downloads.",
+				description: "From annas-archive.se/account. Unlocks fast downloads. Stored in device Keychain.",
 			},
 			{
 				id: "preferred_format",
@@ -272,7 +272,7 @@ __cinderExport = {
 
 		// ── Strategy 1: AA Supporter Key (fast_download) ──
 		try {
-			var supporterKey = await cinder.store.get("aa_supporter_key");
+			var supporterKey = await cinder.secureStore.get("aa_supporter_key");
 			if (supporterKey && supporterKey.trim()) {
 				supporterKey = supporterKey.trim();
 				cinder.log("[AA] 🔑 Trying fast_download with supporter key...");
