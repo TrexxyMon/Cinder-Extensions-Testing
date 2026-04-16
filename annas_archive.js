@@ -9,7 +9,7 @@
 __cinderExport = {
 	id: "annas-archive-slow",
 	name: "Anna's Archive (Slow)",
-	version: "1.5.5",
+	version: "1.5.6",
 	icon: "📚",
 	description: "Free slow downloads from Anna's Archive. No account or API key needed.",
 	contentType: "books",
@@ -293,19 +293,28 @@ __cinderExport = {
 				// Strategy 0.5: clipboard.writeText URL extraction
 				// Copy-paste servers (6, 8) have no "Download now" anchor.
 				// The URL lives inside: navigator.clipboard.writeText('http://...')
+				// Prefer HTTPS over HTTP (momot.rs > raw IP) since iOS blocks plain HTTP
 				if (!downloadUrl) {
 					var clipMatches = slowResp.data.match(/clipboard\.writeText\(['"]([^'"]+)['"]\)/g);
 					if (clipMatches) {
+						var httpsClip = null;
+						var httpClip = null;
 						for (var cm = 0; cm < clipMatches.length; cm++) {
 							var clipInner = clipMatches[cm].match(/clipboard\.writeText\(['"]([^'"]+)['"]\)/);
 							if (clipInner && clipInner[1] && clipInner[1].match(/^https?:\/\//)) {
 								var clipUrl = clipInner[1];
-								if (clipUrl.indexOf("annas-archive") === -1) {
-									downloadUrl = clipUrl;
-									cinder.log("[AA] ✅ Found download link via clipboard: " + downloadUrl);
-									break;
+								if (clipUrl.indexOf("annas-archive") !== -1) continue;
+								if (clipUrl.indexOf("https://") === 0 && !httpsClip) {
+									httpsClip = clipUrl;
+								} else if (!httpClip) {
+									httpClip = clipUrl;
 								}
 							}
+						}
+						// Prefer HTTPS (works on iOS), fall back to HTTP
+						downloadUrl = httpsClip || httpClip || null;
+						if (downloadUrl) {
+							cinder.log("[AA] ✅ Found download link via clipboard (" + (httpsClip ? "HTTPS" : "HTTP") + "): " + downloadUrl);
 						}
 					}
 				}
@@ -439,6 +448,12 @@ __cinderExport = {
 							cinder.warn("[AA] ⚠️ Skipping unsupported format '" + fileExt + "' on link " + (k+1) + ", trying next mirror...");
 							continue;
 						}
+					}
+
+					// Skip plain HTTP URLs — iOS App Transport Security blocks them
+					if (downloadUrl.indexOf("http://") === 0) {
+						cinder.warn("[AA] ⚠️ Skipping plain HTTP URL on link " + (k+1) + " (blocked by iOS ATS), trying next mirror...");
+						continue;
 					}
 
 					cinder.log("[AA] ✅ Resolved: " + downloadUrl);
