@@ -9,7 +9,7 @@
 __cinderExport = {
 	id: "annas-archive-slow",
 	name: "Anna's Archive (Slow)",
-	version: "1.5.6",
+	version: "1.5.7",
 	icon: "📚",
 	description: "Free slow downloads from Anna's Archive. No account or API key needed.",
 	contentType: "books",
@@ -227,26 +227,27 @@ __cinderExport = {
 			cinder.log("[AA] Constructed 8 fallback slow links");
 		}
 
-		// Step 3: Order links smartly
-		// Indices 5,7 give clickable download links (best)
-		// Indices 6,8 give copy-paste URLs only (buttons/text)
-		// Indices 0-4 require waitlist (worst)
-		var clickable = []; // 5, 7
-		var copyPaste = []; // 6, 8
-		var waitlist = [];  // 0-4
+		// Step 3: Order links smartly — prefer HTTPS mirrors first
+		// Index 6: "Download now" anchor → HTTPS (momot.rs) — BEST
+		// Index 8: "Download now" anchor → HTTPS (alternate) — GOOD
+		// Indices 5, 7: clipboard copy-paste only → HTTP raw IP — SLOW (iOS blocks)
+		// Indices 0-4: waitlist — worst
+		var httpsAnchors = []; // 6, 8 — have a proper Download now anchor with HTTPS
+		var copyPaste = [];   // 5, 7 — clipboard HTTP only (iOS blocks)
+		var waitlist = [];    // 0-4
 		for (var j = 0; j < slowLinks.length; j++) {
 			var indexMatch = slowLinks[j].match(/\/(\d+)$/);
 			var linkIndex = indexMatch ? parseInt(indexMatch[1]) : j;
-			if (linkIndex === 5 || linkIndex === 7) {
-				clickable.push(slowLinks[j]);
-			} else if (linkIndex === 6 || linkIndex === 8) {
+			if (linkIndex === 6 || linkIndex === 8) {
+				httpsAnchors.push(slowLinks[j]);
+			} else if (linkIndex === 5 || linkIndex === 7) {
 				copyPaste.push(slowLinks[j]);
 			} else {
 				waitlist.push(slowLinks[j]);
 			}
 		}
-		var orderedLinks = clickable.concat(copyPaste).concat(waitlist);
-		cinder.log("[AA] Order: " + clickable.length + " clickable, " + copyPaste.length + " copy-paste, " + waitlist.length + " waitlist");
+		var orderedLinks = httpsAnchors.concat(copyPaste).concat(waitlist);
+		cinder.log("[AA] Order: " + httpsAnchors.length + " https-anchor, " + copyPaste.length + " copy-paste, " + waitlist.length + " waitlist");
 
 		// Step 4: For each slow link, use fetchBrowser (DDoS-Guard + JS countdown)
 		// The slow download page has a 5s JS countdown, then reveals download link
