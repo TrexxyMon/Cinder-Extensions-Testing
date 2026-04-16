@@ -9,7 +9,7 @@
 __cinderExport = {
 	id: "annas-archive-slow",
 	name: "Anna's Archive (Slow)",
-	version: "1.6.3",
+	version: "1.6.4",
 	icon: "📚",
 	description: "Free slow downloads from Anna's Archive. No account or API key needed.",
 	contentType: "books",
@@ -172,10 +172,16 @@ __cinderExport = {
 					var rawBlock = resp.data.substring(idx, idx + 4000);
 					var cleanText = rawBlock.replace(/<[^>]+>/g, ' '); // Strip HTML tags
 					
-					var formatMatch = cleanText.match(/\b(epub|pdf|mobi|azw3|cbz|cbr|fb2|djvu)\b/i);
+					// AA typically isolates metadata with a middle dot separator:
+					// e.g. "English [en] · EPUB · 8.1MB · 2010"
+					// Isolating this exact line prevents false positives (e.g. .epub in a filename string above)
+					var metaLineMatch = cleanText.match(/([^\n·]+·[^\n·]+·[^\n·]*(?:MB|KB|GB|KiB|MiB)[^\n]*)/i);
+					var searchTarget = metaLineMatch ? metaLineMatch[1] : cleanText;
+
+					var formatMatch = searchTarget.match(/\b(epub|pdf|mobi|azw3|cbz|cbr|fb2|djvu)\b/i);
 					if (formatMatch) fileFormat = formatMatch[1].toLowerCase();
 					
-					var sizeMatch = cleanText.match(/(\d+\.?\d*\s*[KMGi]i?B)/i);
+					var sizeMatch = searchTarget.match(/(\d+\.?\d*\s*[KMGi]i?B)/i);
 					if (sizeMatch) size = sizeMatch[1].replace(/\s+/g, "");
 				}
 
