@@ -390,7 +390,6 @@ __cinderExport = {
 					cinder.log("[AA] 🚀 Race winner: " + raceResult.url.substring(0, 80));
 					return {
 						url: raceResult.url,
-						debridLink: debridLink,
 						headers: {
 							"Referer": raceResult.referer || "https://annas-archive.gd/",
 							"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
@@ -446,7 +445,6 @@ __cinderExport = {
 				cinder.log("[AA] ✅ Resolved: " + downloadUrl);
 				return {
 					url: downloadUrl,
-					debridLink: debridLink,
 					headers: {
 						"Referer": slowUrl,
 						"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
