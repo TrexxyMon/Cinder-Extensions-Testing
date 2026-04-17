@@ -278,7 +278,6 @@ __cinderExport = {
 				cinder.log("[AA] 🔑 Trying fast_download with supporter key...");
 				var baseUrl = await this._getBaseUrl();
 
-				// Try fast_download endpoint — no queue, instant download
 				var fastUrl = baseUrl + "/fast_download/" + md5 + "/0/2?secret=" + encodeURIComponent(supporterKey);
 				var fastResp = await this._smartFetch(fastUrl);
 
@@ -286,7 +285,6 @@ __cinderExport = {
 					var downloadUrl = this._extractDownloadUrl(fastResp.data);
 					if (downloadUrl) {
 						cinder.log("[AA] 🚀 Fast download resolved: " + downloadUrl.substring(0, 80));
-						// No debridLink — AA key is faster than TorBox, don't let it intercept
 						return {
 							url: downloadUrl,
 							headers: {
@@ -296,55 +294,76 @@ __cinderExport = {
 						};
 					}
 				}
-				cinder.warn("[AA] Fast download failed (status " + fastResp.status + "), falling through to other strategies");
+				cinder.warn("[AA] Fast download failed (status " + fastResp.status + "), falling through");
 			}
 		} catch (fastErr) {
 			cinder.warn("[AA] Fast download error: " + fastErr);
 		}
 
-		// ── Strategy 2: Library.lol / Libgen CDN First-Pass ──
+		// ── Strategy 2+3: Libgen CDN + Detail Page IN PARALLEL ──
+		// Don't wait for Libgen to fail before loading the detail page.
+		// Fire both at once and use whichever resolves first.
 		var enableLibgen = await cinder.store.get("enable_libgen");
-		if (enableLibgen !== "false") {
-			try {
-				cinder.log("[AA] 📖 Trying Library.lol CDN for md5: " + md5);
-				var libgenResult = await this._tryLibgenCDN(md5);
-				if (libgenResult) {
-					cinder.log("[AA] 🚀 Libgen CDN resolved: " + libgenResult.substring(0, 80));
-					// No debridLink — Libgen CDN is full speed and free, no need for TorBox
-					return {
-						url: libgenResult,
-						headers: {
-							"Referer": "https://library.lol/",
-							"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
-						},
-					};
-				}
-			} catch (libErr) {
-				cinder.warn("[AA] Libgen CDN failed: " + libErr);
+		var baseUrl = await this._getBaseUrl();
+
+		var libgenPromise = (enableLibgen !== "false")
+			? this._tryLibgenCDN(md5).catch(function() { return null; })
+			: Promise.resolve(null);
+
+		var detailPromise = this._fetchWithFallback("/md5/" + md5).catch(function() { return null; });
+
+		// Race: if Libgen CDN wins fast, we skip detail page entirely
+		var libgenResult = null;
+		var detailResp = null;
+
+		try {
+			// Give Libgen a 4s head start race against detail page
+			libgenResult = await Promise.race([
+				libgenPromise,
+				new Promise(function(resolve) { setTimeout(function() { resolve(null); }, 4000); }),
+			]);
+		} catch (e) {
+			libgenResult = null;
+		}
+
+		if (libgenResult) {
+			cinder.log("[AA] 🚀 Libgen CDN resolved in <4s: " + libgenResult.substring(0, 80));
+			return {
+				url: libgenResult,
+				headers: {
+					"Referer": "https://library.lol/",
+					"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
+				},
+			};
+		}
+
+		// Libgen didn't win the race — wait for detail page (it was already loading in parallel)
+		cinder.log("[AA] Libgen CDN didn't win race, waiting for detail page...");
+		detailResp = await detailPromise;
+
+		// Meanwhile, Libgen might still finish — keep its promise alive
+		// We'll check it again after parsing the detail page
+		var pendingLibgen = libgenPromise;
+
+		// Parse slow download links from detail page
+		var slowLinks = [];
+		if (detailResp && detailResp.data) {
+			var detailDoc = cinder.parseHTML(detailResp.data);
+			var allLinks = detailDoc.querySelectorAll("a[href*='/slow_download/']");
+			for (var i = 0; i < allLinks.length; i++) {
+				var href = allLinks[i].attr("href");
+				if (href) slowLinks.push(href);
 			}
 		}
-
-		// ── Load detail page to find slow download links ──
-		var detailPath = "/md5/" + md5;
-		var detailResp = await this._fetchWithFallback(detailPath);
-		var detailDoc = cinder.parseHTML(detailResp.data);
-
-		var slowLinks = [];
-		var allLinks = detailDoc.querySelectorAll("a[href*='/slow_download/']");
-		for (var i = 0; i < allLinks.length; i++) {
-			var href = allLinks[i].attr("href");
-			if (href) slowLinks.push(href);
-		}
-		cinder.log("[AA] Found " + slowLinks.length + " slow download links on detail page");
+		cinder.log("[AA] Found " + slowLinks.length + " slow download links");
 
 		if (slowLinks.length === 0) {
 			for (var idx = 0; idx < 8; idx++) {
 				slowLinks.push("/slow_download/" + md5 + "/0/" + idx);
 			}
-			cinder.log("[AA] Constructed 8 fallback slow links");
 		}
 
-		// Order links: HTTPS anchors (6, 8) first, then copy-paste (5, 7), then waitlist (0-4)
+		// Order: HTTPS anchors (6,8) first, then copy-paste (5,7), then waitlist (0-4)
 		var httpsAnchors = [];
 		var copyPaste = [];
 		var waitlist = [];
@@ -360,23 +379,20 @@ __cinderExport = {
 			}
 		}
 		var orderedLinks = httpsAnchors.concat(copyPaste).concat(waitlist);
-		cinder.log("[AA] Order: " + httpsAnchors.length + " https-anchor, " + copyPaste.length + " copy-paste, " + waitlist.length + " waitlist");
 
-		var baseUrl = await this._getBaseUrl();
-
-		// ── Strategy 3: Parallel Mirror Race ──
+		// ── Strategy 3: Parallel Mirror Race (REAL first-one-wins) ──
 		var enableRace = await cinder.store.get("enable_mirror_race");
-		if (enableRace !== "false" && httpsAnchors.length >= 2) {
+		if (enableRace !== "false" && httpsAnchors.length >= 1) {
 			try {
-				cinder.log("[AA] 🏁 Starting parallel mirror race with " + httpsAnchors.length + " HTTPS mirrors...");
-				var raceResult = await this._raceMirrors(httpsAnchors, baseUrl);
+				cinder.log("[AA] 🏁 Racing " + httpsAnchors.length + " HTTPS mirrors + pending Libgen...");
+				var raceResult = await this._raceMirrors(httpsAnchors, baseUrl, pendingLibgen);
 				if (raceResult) {
-					cinder.log("[AA] 🚀 Mirror race winner: " + raceResult.url.substring(0, 80));
+					cinder.log("[AA] 🚀 Race winner: " + raceResult.url.substring(0, 80));
 					return {
 						url: raceResult.url,
 						debridLink: debridLink,
 						headers: {
-							"Referer": raceResult.referer,
+							"Referer": raceResult.referer || "https://annas-archive.gd/",
 							"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
 						},
 					};
@@ -386,62 +402,58 @@ __cinderExport = {
 			}
 		}
 
-		// ── Strategy 4: Sequential Slow Download (original fallback) ──
-		cinder.log("[AA] 🐢 Falling back to sequential slow download...");
+		// ── Strategy 4: Sequential Slow Download (fallback) ──
+		cinder.log("[AA] 🐢 Sequential fallback with " + orderedLinks.length + " links...");
 		var lastError = null;
 
-		for (var k = 0; k < orderedLinks.length; k++) {
+		for (var k = 0; k < Math.min(orderedLinks.length, 4); k++) {
 			try {
 				var slowPath = orderedLinks[k];
 				var slowUrl = slowPath.indexOf("http") === 0 ? slowPath : baseUrl + slowPath;
-				cinder.log("[AA] Fetching slow link " + (k+1) + ": " + slowUrl);
+				cinder.log("[AA] Trying link " + (k+1) + ": " + slowUrl);
 
-				var slowResp = await cinder.fetchBrowser(slowUrl);
-
-				if (!slowResp.data || slowResp.data.length < 200) {
-					cinder.warn("[AA] Slow link " + (k+1) + " returned empty/short response");
-					continue;
+				// Try fast fetch first, fall back to browser only if CF blocks
+				var slowResp = null;
+				try {
+					slowResp = await cinder.fetch(slowUrl, {
+						headers: {
+							"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+							"Accept": "text/html,application/xhtml+xml",
+						},
+						timeout: 6000,
+					});
+					if (slowResp.status === 403 || !slowResp.data || slowResp.data.length < 500 ||
+						(slowResp.data.indexOf("cf-challenge") !== -1)) {
+						cinder.log("[AA] CF blocked on fetch, trying browser...");
+						slowResp = await cinder.fetchBrowser(slowUrl);
+					}
+				} catch (fetchErr) {
+					slowResp = await cinder.fetchBrowser(slowUrl);
 				}
 
-				if (slowResp.data.indexOf("DDoS-Guard") !== -1 && slowResp.data.indexOf("Download") === -1) {
-					cinder.warn("[AA] Got DDoS-Guard challenge page, trying next...");
-					continue;
-				}
+				if (!slowResp || !slowResp.data || slowResp.data.length < 200) continue;
+				if (slowResp.data.indexOf("DDoS-Guard") !== -1 && slowResp.data.indexOf("Download") === -1) continue;
 
 				var downloadUrl = this._extractDownloadUrl(slowResp.data);
+				if (!downloadUrl) continue;
 
-				if (downloadUrl) {
-					// Validate format
-					var decodedUrl = decodeURIComponent(downloadUrl).toLowerCase();
-					var extMatch = decodedUrl.match(/\.(epub|pdf|fb2|mobi|azw3?|djvu|cbz|cbr|txt)(?:\?|$)/);
-					if (extMatch) {
-						var fileExt = extMatch[1];
-						if (this._SUPPORTED_FORMATS.indexOf(fileExt) === -1) {
-							cinder.warn("[AA] ⚠️ Skipping unsupported format '" + fileExt + "' on link " + (k+1));
-							continue;
-						}
-					}
+				// Validate
+				if (downloadUrl.indexOf("http://") === 0) continue;
+				var decodedUrl = decodeURIComponent(downloadUrl).toLowerCase();
+				var extMatch = decodedUrl.match(/\.(epub|pdf|fb2|mobi|azw3?|djvu|cbz|cbr|txt)(?:\?|$)/);
+				if (extMatch && this._SUPPORTED_FORMATS.indexOf(extMatch[1]) === -1) continue;
 
-					// Skip plain HTTP (iOS ATS blocks)
-					if (downloadUrl.indexOf("http://") === 0) {
-						cinder.warn("[AA] ⚠️ Skipping plain HTTP on link " + (k+1));
-						continue;
-					}
-
-					cinder.log("[AA] ✅ Resolved: " + downloadUrl);
-					return {
-						url: downloadUrl,
-						debridLink: debridLink,
-						headers: {
-							"Referer": slowUrl,
-							"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
-						},
-					};
-				}
-
-				cinder.warn("[AA] No download URL found on slow link " + (k+1));
+				cinder.log("[AA] ✅ Resolved: " + downloadUrl);
+				return {
+					url: downloadUrl,
+					debridLink: debridLink,
+					headers: {
+						"Referer": slowUrl,
+						"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
+					},
+				};
 			} catch (err) {
-				cinder.warn("[AA] Slow link " + (k+1) + " failed: " + err);
+				cinder.warn("[AA] Link " + (k+1) + " failed: " + err);
 				lastError = err;
 			}
 		}
@@ -454,8 +466,9 @@ __cinderExport = {
 	// ═══════════════════════════════════════════════════════════
 
 	/**
-	 * Strategy 2: Try Library.lol CDN using the MD5 hash.
+	 * Strategy 2: Try Libgen CDN using the MD5 hash.
 	 * Returns the direct download URL or null.
+	 * NO PROBE — just return the URL; DownloadManager validates during download.
 	 */
 	_tryLibgenCDN: async function(md5) {
 		// Library.lol serves as a redirect page with the actual download link
@@ -466,22 +479,15 @@ __cinderExport = {
 					"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
 					"Accept": "text/html",
 				},
-				timeout: 8000,
+				timeout: 6000,
 			});
 
 			if (resp.status === 200 && resp.data && resp.data.length > 200) {
 				// Library.lol page has a download link like: <a href="https://download.library.lol/main/...">
 				var dlMatch = resp.data.match(/href="(https?:\/\/download\.library\.lol\/[^"]+)"/i);
 				if (dlMatch && dlMatch[1]) {
-					// Verify link is alive with a quick HEAD-style probe
-					var probeResp = await cinder.fetch(dlMatch[1], {
-						headers: { "Range": "bytes=0-1024" },
-						timeout: 5000,
-					});
-					if (probeResp.status === 200 || probeResp.status === 206) {
-						return dlMatch[1];
-					}
-					cinder.warn("[AA] Library.lol link returned " + probeResp.status);
+					cinder.log("[AA] Libgen CDN URL found (no probe): " + dlMatch[1].substring(0, 60));
+					return dlMatch[1];
 				}
 
 				// Also try cloudflare-ipfs or other CDN links on the page
@@ -500,7 +506,7 @@ __cinderExport = {
 			var altUrl = "https://libgen.li/ads.php?md5=" + md5;
 			var altResp = await cinder.fetch(altUrl, {
 				headers: { "User-Agent": "Mozilla/5.0", "Accept": "text/html" },
-				timeout: 6000,
+				timeout: 5000,
 			});
 			if (altResp.status === 200 && altResp.data) {
 				var altMatch = altResp.data.match(/href="(https?:\/\/[^"]*(?:get|download)[^"]+)"/i);
@@ -516,45 +522,104 @@ __cinderExport = {
 	},
 
 	/**
-	 * Strategy 3: Race multiple slow download mirrors simultaneously.
-	 * Resolves all mirror pages at once, returns the first one that yields a download URL.
+	 * Strategy 3: Race multiple slow download mirrors + pending Libgen.
+	 * Uses REAL first-one-wins: resolves the instant ANY mirror returns a download URL.
 	 */
-	_raceMirrors: async function(mirrorPaths, baseUrl) {
+	_raceMirrors: async function(mirrorPaths, baseUrl, pendingLibgen) {
 		var self = this;
-		var resolved = false;
 
-		// Create promises for each mirror
-		var promises = mirrorPaths.map(function(path, index) {
-			var slowUrl = path.indexOf("http") === 0 ? path : baseUrl + path;
-			return cinder.fetchBrowser(slowUrl).then(function(resp) {
-				if (resolved) return null; // Another mirror already won
-				if (!resp.data || resp.data.length < 200) return null;
-				if (resp.data.indexOf("DDoS-Guard") !== -1 && resp.data.indexOf("Download") === -1) return null;
+		// Build an array of race entries
+		var entries = [];
 
-				var downloadUrl = self._extractDownloadUrl(resp.data);
-				if (!downloadUrl) return null;
-
-				// Validate: must be HTTPS and supported format
-				if (downloadUrl.indexOf("http://") === 0) return null;
-				var decoded = decodeURIComponent(downloadUrl).toLowerCase();
-				var extMatch = decoded.match(/\.(epub|pdf|fb2|mobi|azw3?|djvu|cbz|cbr|txt)(?:\?|$)/);
-				if (extMatch && self._SUPPORTED_FORMATS.indexOf(extMatch[1]) === -1) return null;
-
-				resolved = true;
-				cinder.log("[AA] 🏆 Mirror " + (index + 1) + " won the race!");
-				return { url: downloadUrl, referer: slowUrl };
-			}).catch(function(err) {
-				cinder.warn("[AA] Mirror " + (index + 1) + " race entry failed: " + err);
-				return null;
-			});
-		});
-
-		// Wait for first non-null result
-		var results = await Promise.all(promises); // Note: can't use Promise.any in sandboxed env
-		for (var i = 0; i < results.length; i++) {
-			if (results[i]) return results[i];
+		// Include pending Libgen result if still in flight
+		if (pendingLibgen) {
+			entries.push(
+				pendingLibgen.then(function(libgenUrl) {
+					if (libgenUrl) {
+						cinder.log("[AA] 🏆 Libgen CDN finished during race!");
+						return { url: libgenUrl, referer: "https://library.lol/" };
+					}
+					return null;
+				}).catch(function() { return null; })
+			);
 		}
-		return null;
+
+		// Add mirror entries — try fetch first, fetchBrowser as fallback
+		for (var i = 0; i < mirrorPaths.length; i++) {
+			(function(path, index) {
+				var slowUrl = path.indexOf("http") === 0 ? path : baseUrl + path;
+				entries.push(
+					(async function() {
+						var resp = null;
+						// Try fast fetch first
+						try {
+							resp = await cinder.fetch(slowUrl, {
+								headers: {
+									"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+									"Accept": "text/html,application/xhtml+xml",
+								},
+								timeout: 6000,
+							});
+							if (resp.status === 403 || !resp.data || resp.data.length < 500 ||
+								(resp.data.indexOf("cf-challenge") !== -1)) {
+								resp = await cinder.fetchBrowser(slowUrl);
+							}
+						} catch (e) {
+							resp = await cinder.fetchBrowser(slowUrl);
+						}
+
+						if (!resp || !resp.data || resp.data.length < 200) return null;
+						if (resp.data.indexOf("DDoS-Guard") !== -1 && resp.data.indexOf("Download") === -1) return null;
+
+						var downloadUrl = self._extractDownloadUrl(resp.data);
+						if (!downloadUrl) return null;
+						if (downloadUrl.indexOf("http://") === 0) return null;
+
+						var decoded = decodeURIComponent(downloadUrl).toLowerCase();
+						var extMatch = decoded.match(/\.(epub|pdf|fb2|mobi|azw3?|djvu|cbz|cbr|txt)(?:\?|$)/);
+						if (extMatch && self._SUPPORTED_FORMATS.indexOf(extMatch[1]) === -1) return null;
+
+						cinder.log("[AA] 🏆 Mirror " + (index + 1) + " won!");
+						return { url: downloadUrl, referer: slowUrl };
+					})().catch(function(err) {
+						cinder.warn("[AA] Mirror " + (index + 1) + " failed: " + err);
+						return null;
+					})
+				);
+			})(mirrorPaths[i], i);
+		}
+
+		// REAL first-one-wins: resolve as soon as ANY entry returns non-null
+		return new Promise(function(resolve) {
+			var settled = false;
+			var remaining = entries.length;
+
+			entries.forEach(function(p) {
+				p.then(function(result) {
+					if (result && !settled) {
+						settled = true;
+						resolve(result);
+					}
+					remaining--;
+					if (remaining === 0 && !settled) {
+						resolve(null);
+					}
+				}).catch(function() {
+					remaining--;
+					if (remaining === 0 && !settled) {
+						resolve(null);
+					}
+				});
+			});
+
+			// Safety timeout — don't wait forever
+			setTimeout(function() {
+				if (!settled) {
+					settled = true;
+					resolve(null);
+				}
+			}, 15000);
+		});
 	},
 
 	/**
@@ -618,7 +683,6 @@ __cinderExport = {
 				var candidate = urlMatches[u];
 				if (self._isJunkUrl(candidate)) continue;
 				if (candidate.indexOf("#") === 0) continue;
-				// Prefer URLs with file extensions
 				var candidateLower = candidate.toLowerCase();
 				if (candidateLower.indexOf(".epub") !== -1 || candidateLower.indexOf(".pdf") !== -1 ||
 					candidateLower.indexOf("/d3/") !== -1 || candidateLower.indexOf("/download") !== -1) {
@@ -631,3 +695,4 @@ __cinderExport = {
 		return null;
 	},
 };
+
