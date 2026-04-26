@@ -1,4 +1,4 @@
-// ─── Z-Library Direct Download Extension v1.0.0 ──────────────────
+// ─── Z-Library Direct Download Extension v1.1.0 ──────────────────
 //
 // Integrated Z-Library scraper with dynamic IP spoofing and domain fallbacks.
 // Bypasses download limits by rotating X-Forwarded-For headers via WebView.
@@ -6,7 +6,7 @@
 __cinderExport = {
 	id: "zlibrary-direct",
 	name: "Z-Library (Direct)",
-	version: "1.0.0",
+	version: "1.1.0",
 	icon: "📖",
 	description: "Direct downloads from Z-Library mirrors with IP rotation and Cloudflare bypass.",
 	contentType: "books",
@@ -63,7 +63,7 @@ __cinderExport = {
 
 	_getHeaders: async function() {
 		var headers = {
-			"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
+			"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
 			"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 		};
 		
@@ -92,39 +92,63 @@ __cinderExport = {
 		for (var i = 0; i < domains.length; i++) {
 			var url = "https://" + domains[i] + path;
 			try {
-				cinder.log("[Z-Lib] Trying: " + url);
-				// Always use fetchBrowser for Z-Lib mirrors as they usually have CF/Bot protection
+				cinder.log("[Z-Lib] Trying domain: " + domains[i] + " (Attempt " + (i+1) + ")");
+				
 				var resp = await cinder.fetchBrowser(url, { headers: headers });
 				if (resp.status === 200 && resp.data && resp.data.length > 500) {
+					// Check if we hit a "No results found" or error page
+					if (resp.data.indexOf("No results found") !== -1 || resp.data.indexOf("Matching books not found") !== -1) {
+						cinder.log("[Z-Lib] Mirror returned 200 but zero results.");
+						return { data: resp.data, baseUrl: "https://" + domains[i], empty: true };
+					}
 					return { data: resp.data, baseUrl: "https://" + domains[i] };
 				}
-				cinder.warn("[Z-Lib] " + domains[i] + " returned status " + resp.status);
+				cinder.warn("[Z-Lib] " + domains[i] + " returned status " + resp.status + " or small data (" + (resp.data ? resp.data.length : 0) + " bytes)");
 			} catch (err) {
-				cinder.warn("[Z-Lib] " + domains[i] + " failed: " + err);
+				cinder.warn("[Z-Lib] Domain " + domains[i] + " failed: " + err);
 				lastErr = err;
 			}
 		}
-		throw lastErr || new Error("All Z-Library domains failed.");
+		throw lastErr || new Error("All Z-Library mirrors failed to respond.");
 	},
 
 	// ── Search ──
 
 	search: async function(query, page) {
 		if (!page) page = 0;
-		// Z-Lib usually uses /s/query or /search?q=query
-		// We'll use /s/ format with EPUB filter (?e=1 or similar if supported by mirror)
-		var searchPath = "/s/" + encodeURIComponent(query) + "?e=1";
-		if (page > 0) searchPath += "&page=" + (page + 1);
+		cinder.log("[Z-Lib] Searching for: " + query + " (Page " + (page + 1) + ")");
 
-		var result = await this._fetchWithFallback(searchPath);
+		// Z-Lib usually uses /s/query
+		var searchPath = "/s/" + encodeURIComponent(query);
+		if (page > 0) searchPath += "?page=" + (page + 1);
+
+		var result = null;
+		try {
+			result = await this._fetchWithFallback(searchPath);
+		} catch (e) {
+			cinder.error("[Z-Lib] Search fetch failed: " + e);
+			return [];
+		}
+
+		if (result.empty) return [];
+
 		var doc = cinder.parseHTML(result.data);
-		var items = doc.querySelectorAll("table.resItemTable, div.resItemBox, .bookRow");
+		
+		// Broaden selectors to handle various mirror skins
+		var items = doc.querySelectorAll("table.resItemTable, div.resItemBox, .bookRow, tr.bookRow, .z-book-item");
+		cinder.log("[Z-Lib] Found " + items.length + " potential items in HTML");
 		
 		var results = [];
 		for (var i = 0; i < items.length; i++) {
 			try {
 				var item = items[i];
-				var titleLink = item.querySelector("h3[itemprop='name'] a, a[href^='/book/']");
+				
+				// Try various title link selectors
+				var titleLink = item.querySelector("h3[itemprop='name'] a, a[href^='/book/'], .title a, a.resItemTitle");
+				if (!titleLink) {
+					// Fallback: any link with /book/ in it
+					titleLink = item.querySelector("a[href*='/book/']");
+				}
 				if (!titleLink) continue;
 
 				var title = titleLink.text().trim();
@@ -135,22 +159,27 @@ __cinderExport = {
 				if (url.indexOf("/") === 0) url = result.baseUrl + url;
 
 				var author = "";
-				var authorEl = item.querySelector("div.authors a, .authors");
+				var authorEl = item.querySelector("div.authors a, .authors, a[href^='/author/'], [itemprop='author']");
 				if (authorEl) author = authorEl.text().trim();
 
 				var format = "epub";
 				var size = "";
-				var metaEl = item.querySelector(".bookProperty.property__file, .property_value");
-				if (metaEl) {
-					var metaText = metaEl.text().trim();
-					// Often "epub, 2.5 MB"
-					var parts = metaText.split(",");
-					if (parts.length > 0) format = parts[0].trim().toLowerCase();
-					if (parts.length > 1) size = parts[1].trim();
+				
+				// Extract format/size from property labels
+				var metaEls = item.querySelectorAll(".bookProperty, .property_value, .file-info");
+				for (var m = 0; m < metaEls.length; m++) {
+					var mText = metaEls[m].text().toLowerCase();
+					if (mText.indexOf("pdf") !== -1) format = "pdf";
+					else if (mText.indexOf("epub") !== -1) format = "epub";
+					else if (mText.indexOf("mobi") !== -1) format = "mobi";
+					
+					var sizeMatch = mText.match(/(\d+\.?\d*\s*(?:mb|kb|gb|mib|kib))/i);
+					if (sizeMatch) size = sizeMatch[1].toUpperCase();
 				}
 
-				var coverEl = item.querySelector("img.cover, img[itemprop='image']");
+				var coverEl = item.querySelector("img.cover, img[itemprop='image'], .cover img");
 				var cover = coverEl ? coverEl.attr("src") : "";
+				if (cover && cover.indexOf("/") === 0) cover = result.baseUrl + cover;
 
 				results.push({
 					id: url,
@@ -167,6 +196,7 @@ __cinderExport = {
 			}
 		}
 
+		cinder.log("[Z-Lib] Returning " + results.length + " results");
 		return results;
 	},
 
@@ -174,7 +204,7 @@ __cinderExport = {
 
 	resolve: async function(item) {
 		var detailUrl = item.url;
-		cinder.log("[Z-Lib] Resolving detail page: " + detailUrl);
+		cinder.log("[Z-Lib] Resolving download for: " + item.title);
 
 		var headers = await this._getHeaders();
 		var resp = await cinder.fetchBrowser(detailUrl, { headers: headers });
@@ -182,8 +212,9 @@ __cinderExport = {
 		if (!resp.data) throw new Error("Failed to load detail page.");
 
 		var doc = cinder.parseHTML(resp.data);
-		// Look for download buttons
-		var dlLink = doc.querySelector("a.addDownloadedBook, a.dlButton, a[href^='/dl/'], a.btn-primary");
+		
+		// Look for download buttons with various patterns
+		var dlLink = doc.querySelector("a.addDownloadedBook, a.dlButton, a[href^='/dl/'], a.btn-primary, .download-button a");
 		
 		if (!dlLink) {
 			// Try regex if DOM fails
@@ -199,7 +230,7 @@ __cinderExport = {
 					headers: headers
 				};
 			}
-			throw new Error("Download link not found on page.");
+			throw new Error("Download button not found. You might need to log in on this mirror.");
 		}
 
 		var finalUrl = dlLink.attr("href");
