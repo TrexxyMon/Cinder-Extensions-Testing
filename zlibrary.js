@@ -144,7 +144,7 @@ __cinderExport = {
 				var item = items[i];
 				
 				// Try various title link selectors
-				var titleLink = item.querySelector("h3[itemprop='name'] a, a[href^='/book/'], .title a, a.resItemTitle");
+				var titleLink = item.querySelector(".itemTitle a, h3[itemprop='name'] a, a[href^='/book/'], .title a, a.resItemTitle");
 				if (!titleLink) {
 					// Fallback: any link with /book/ in it
 					titleLink = item.querySelector("a[href*='/book/']");
