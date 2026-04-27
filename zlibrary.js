@@ -1,13 +1,13 @@
-// ─── Z-Library Direct Download Extension v1.7.0 ──────────────────
+// ─── Z-Library Direct Download Extension v1.7.1 ──────────────────
 //
 // Integrated Z-Library scraper with IPFS and Direct Mirror support.
-// v1.7.0: Prioritizes direct mirror links (the one in the source) 
-// and improves browser parity to bypass guest download blocks.
+// v1.7.1: Fixed Referer header to be the exact detail page URL.
+// This is critical for bypassing guest download blocks on some mirrors.
 
 __cinderExport = {
 	id: "zlibrary-direct",
 	name: "Z-Library (Direct)",
-	version: "1.7.0",
+	version: "1.7.1",
 	icon: "📖",
 	description: "Advanced Z-Library scraper with IPFS bypass and direct reader support.",
 	contentType: "books",
@@ -70,7 +70,7 @@ __cinderExport = {
 		"singlelogin.rs"
 	],
 
-	_getHeaders: async function(url) {
+	_getHeaders: async function(refererUrl) {
 		var headers = {
 			"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 			"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
@@ -82,13 +82,8 @@ __cinderExport = {
 			"Upgrade-Insecure-Requests": "1"
 		};
 		
-		if (url) {
-			try {
-				var domainMatch = url.match(/^https?:\/\/[^\/]+/);
-				if (domainMatch) {
-					headers["Referer"] = domainMatch[0] + "/";
-				}
-			} catch (e) {}
+		if (refererUrl) {
+			headers["Referer"] = refererUrl;
 		}
 		
 		// IP Spoofing
@@ -248,6 +243,7 @@ __cinderExport = {
 			var mirrorUrl = extractMirrorLink();
 			if (mirrorUrl) {
 				cinder.log("[Z-Lib] Using Direct Mirror: " + mirrorUrl);
+				// CRITICAL: We MUST use the detail page URL as the Referer for the download link
 				return { url: mirrorUrl, headers: headers };
 			}
 			var ipfsUrl = await extractIpfsLink();
