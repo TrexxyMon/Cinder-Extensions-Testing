@@ -1,12 +1,12 @@
-// ─── Z-Library Direct Download Extension v1.2.0 ──────────────────
+// ─── Z-Library Direct Download Extension v1.2.1 ──────────────────
 //
 // Integrated Z-Library scraper with dynamic IP spoofing and domain fallbacks.
-// Updated to handle modern Z-Lib mirrors using <z-bookcard> Web Components.
+// Fixed tagName() property access bug.
 
 __cinderExport = {
 	id: "zlibrary-direct",
 	name: "Z-Library (Direct)",
-	version: "1.2.0",
+	version: "1.2.1",
 	icon: "📖",
 	description: "Direct downloads from Z-Library mirrors with IP rotation and Cloudflare bypass.",
 	contentType: "books",
@@ -149,7 +149,9 @@ __cinderExport = {
 				var cover = "";
 
 				// Handle modern z-bookcard component
-				if (item.tagName().toLowerCase() === "z-bookcard") {
+				// FIX: tagName is a property, not a function
+				var tag = (item.tagName || "").toLowerCase();
+				if (tag === "z-bookcard") {
 					url = item.attr("href");
 					format = item.attr("extension") || "epub";
 					size = item.attr("filesize") || "";
