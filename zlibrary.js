@@ -1,14 +1,14 @@
-// ─── Z-Library Direct Download Extension v1.2.2 ──────────────────
+// ─── Z-Library Direct Download Extension v1.3.0 ──────────────────
 //
 // Integrated Z-Library scraper with dynamic IP spoofing and domain fallbacks.
-// Added Referer headers and improved logging.
+// Prioritizes IPFS links to bypass login requirements on mirrors.
 
 __cinderExport = {
 	id: "zlibrary-direct",
 	name: "Z-Library (Direct)",
-	version: "1.2.2",
+	version: "1.3.0",
 	icon: "📖",
-	description: "Direct downloads from Z-Library mirrors with IP rotation and Cloudflare bypass.",
+	description: "Direct downloads from Z-Library mirrors with IP rotation and IPFS bypass.",
 	contentType: "books",
 
 	capabilities: {
@@ -68,8 +68,10 @@ __cinderExport = {
 		};
 		
 		if (url) {
-			var domain = url.match(/^https?:\/\/[^\/]+/)[0];
-			headers["Referer"] = domain + "/";
+			try {
+				var domain = url.match(/^https?:\/\/[^\/]+/)[0];
+				headers["Referer"] = domain + "/";
+			} catch (e) {}
 		}
 		
 		var spoof = await cinder.store.get("enable_ip_spoofing");
@@ -100,19 +102,13 @@ __cinderExport = {
 				cinder.log("[Z-Lib] Trying domain: " + domains[i] + " (Attempt " + (i+1) + ")");
 				
 				var resp = await cinder.fetchBrowser(url, { headers: headers });
-				cinder.log("[Z-Lib] " + domains[i] + " response: status=" + resp.status + ", length=" + (resp.data ? resp.data.length : 0));
-
 				if (resp.status === 200 && resp.data && resp.data.length > 500) {
-					// Check if we hit a "No results found" or error page
 					if (resp.data.indexOf("No results found") !== -1 || resp.data.indexOf("Matching books not found") !== -1) {
-						cinder.log("[Z-Lib] Mirror returned 200 but zero results.");
 						return { data: resp.data, baseUrl: "https://" + domains[i], empty: true };
 					}
 					return { data: resp.data, baseUrl: "https://" + domains[i] };
 				}
-				cinder.warn("[Z-Lib] " + domains[i] + " returned status " + resp.status + " or small data (" + (resp.data ? resp.data.length : 0) + " bytes)");
 			} catch (err) {
-				cinder.warn("[Z-Lib] Domain " + domains[i] + " failed: " + err);
 				lastErr = err;
 			}
 		}
@@ -139,10 +135,7 @@ __cinderExport = {
 		if (result.empty) return [];
 
 		var doc = cinder.parseHTML(result.data);
-		
-		// Broaden selectors: z-bookcard is for modern mirrors like zlib.li
 		var items = doc.querySelectorAll("z-bookcard, table.resItemTable, div.resItemBox, .bookRow, tr.bookRow");
-		cinder.log("[Z-Lib] Found " + items.length + " potential items in HTML");
 		
 		var results = [];
 		for (var i = 0; i < items.length; i++) {
@@ -208,12 +201,9 @@ __cinderExport = {
 					url: url,
 					source: "Z-Library"
 				});
-			} catch (err) {
-				cinder.warn("[Z-Lib] Parse error for item " + i + ": " + err);
-			}
+			} catch (err) {}
 		}
 
-		cinder.log("[Z-Lib] Returning " + results.length + " results");
 		return results;
 	},
 
@@ -230,34 +220,39 @@ __cinderExport = {
 
 		var doc = cinder.parseHTML(resp.data);
 		
-		var dlLink = doc.querySelector("a.addDownloadedBook, a.dlButton, a[href^='/dl/'], a.btn-primary, .download-button a, .btn-download");
-		
-		if (!dlLink) {
-			var match = resp.data.match(/href="(\/dl\/[^"]+)"/);
-			if (match) {
-				var url = match[1];
-				if (url.indexOf("/") === 0) {
-					var domain = detailUrl.match(/^https?:\/\/[^\/]+/)[0];
-					url = domain + url;
-				}
-				return { 
-					url: url,
-					headers: headers
-				};
+		// 1. Try IPFS links first (bypasses login requirement on mirrors)
+		var ipfsLinks = doc.querySelectorAll("a[href*='/ipfs/']");
+		for (var i = 0; i < ipfsLinks.length; i++) {
+			var link = ipfsLinks[i].attr("href");
+			if (link) {
+				cinder.log("[Z-Lib] Found IPFS link: " + link);
+				return { url: link };
 			}
-			throw new Error("Download button not found. You might need to log in on this mirror.");
 		}
 
-		var finalUrl = dlLink.attr("href");
-		if (finalUrl.indexOf("/") === 0) {
-			var domain = detailUrl.match(/^https?:\/\/[^\/]+/)[0];
-			finalUrl = domain + finalUrl;
+		// 2. Fallback to standard download buttons
+		var dlLink = doc.querySelector("a.addDownloadedBook, a.dlButton, a[href^='/dl/'], a.btn-primary, .download-button a, .btn-download");
+		if (dlLink) {
+			var finalUrl = dlLink.attr("href");
+			if (finalUrl.indexOf("/") === 0) {
+				var domain = detailUrl.match(/^https?:\/\/[^\/]+/)[0];
+				finalUrl = domain + finalUrl;
+			}
+			cinder.log("[Z-Lib] Using standard download URL: " + finalUrl);
+			return { url: finalUrl, headers: headers };
 		}
 
-		cinder.log("[Z-Lib] Resolved download URL: " + finalUrl);
-		return {
-			url: finalUrl,
-			headers: headers
-		};
+		// 3. Last resort: Regex for /dl/ links
+		var match = resp.data.match(/href="(\/dl\/[^"]+)"/);
+		if (match) {
+			var url = match[1];
+			if (url.indexOf("/") === 0) {
+				var domain = detailUrl.match(/^https?:\/\/[^\/]+/)[0];
+				url = domain + url;
+			}
+			return { url: url, headers: headers };
+		}
+
+		throw new Error("Download button not found. Z-Library may be requiring login for this book.");
 	}
 };
