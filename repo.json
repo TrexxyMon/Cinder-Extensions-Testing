@@ -1,12 +1,12 @@
 {
-	"version": "1.5.1",
+	"version": "1.6.0",
 	"name": "Cinder Private Extensions (Updated)",
 	"author": "TrexxyMon",
 	"extensions": [
 		{
 			"id": "annas-archive-slow",
 			"name": "Anna's Archive",
-			"version": "2.1.1",
+			"version": "2.1.0",
 			"description": "Fast downloads from Anna's Archive with multiple acceleration strategies.",
 			"contentType": "books",
 			"scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/annas_archive.js",
@@ -15,7 +15,7 @@
 		{
 			"id": "zlibrary-direct",
 			"name": "Z-Library (Direct)",
-			"version": "1.5.1",
+			"version": "1.6.0",
 			"description": "Advanced Z-Library scraper with IPFS bypass and direct reader support.",
 			"contentType": "books",
 			"scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/zlibrary.js",
