@@ -1,15 +1,15 @@
-// ─── Z-Library Direct Download Extension v1.7.1 ──────────────────
+// ─── Z-Library Direct Download Extension v1.8.0 ──────────────────
 //
 // Integrated Z-Library scraper with IPFS and Direct Mirror support.
-// v1.7.1: Fixed Referer header to be the exact detail page URL.
-// This is critical for bypassing guest download blocks on some mirrors.
+// v1.8.0: Specifically targets addDownloadedBook class to avoid reader links.
+// Skips streaming (reader) support to focus on reliable downloading.
 
 __cinderExport = {
 	id: "zlibrary-direct",
 	name: "Z-Library (Direct)",
-	version: "1.7.1",
+	version: "1.8.0",
 	icon: "📖",
-	description: "Advanced Z-Library scraper with IPFS bypass and direct reader support.",
+	description: "Advanced Z-Library scraper with IPFS bypass. Optimized for direct file extraction.",
 	contentType: "books",
 
 	capabilities: {
@@ -203,7 +203,21 @@ __cinderExport = {
 
 		// 1. Link Extraction Function
 		var extractMirrorLink = function() {
-			var dlLink = doc.querySelector("a.addDownloadedBook, a.dlButton, a[href^='/dl/']");
+			// Targeted selection: find links with addDownloadedBook or /dl/ path,
+			// but specifically EXCLUDE the reader-link class.
+			var dlLink = doc.querySelector("a.addDownloadedBook, a[href^='/dl/']");
+			
+			// Fallback: if addDownloadedBook not found, try dlButton but NOT reader-link
+			if (!dlLink) {
+				var buttons = doc.querySelectorAll("a.dlButton");
+				for (var i = 0; i < buttons.length; i++) {
+					if (buttons[i].attr("class").indexOf("reader-link") === -1) {
+						dlLink = buttons[i];
+						break;
+					}
+				}
+			}
+
 			if (dlLink) {
 				var finalUrl = dlLink.attr("href");
 				if (finalUrl && finalUrl.indexOf("/") === 0) {
@@ -243,7 +257,6 @@ __cinderExport = {
 			var mirrorUrl = extractMirrorLink();
 			if (mirrorUrl) {
 				cinder.log("[Z-Lib] Using Direct Mirror: " + mirrorUrl);
-				// CRITICAL: We MUST use the detail page URL as the Referer for the download link
 				return { url: mirrorUrl, headers: headers };
 			}
 			var ipfsUrl = await extractIpfsLink();
@@ -262,12 +275,6 @@ __cinderExport = {
 				cinder.log("[Z-Lib] Fallback to Direct Mirror: " + mirrorUrl);
 				return { url: mirrorUrl, headers: headers };
 			}
-		}
-
-		// 3. Final Fallback: Reader Link
-		var readerLink = doc.querySelector("a.reader-link");
-		if (readerLink && readerLink.attr("href")) {
-			return { url: readerLink.attr("href") };
 		}
 
 		throw new Error("No guest-accessible download or IPFS CID found.");
