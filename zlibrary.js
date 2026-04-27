@@ -1,12 +1,12 @@
-// ─── Z-Library Direct Download Extension v1.1.0 ──────────────────
+// ─── Z-Library Direct Download Extension v1.2.0 ──────────────────
 //
 // Integrated Z-Library scraper with dynamic IP spoofing and domain fallbacks.
-// Bypasses download limits by rotating X-Forwarded-For headers via WebView.
+// Updated to handle modern Z-Lib mirrors using <z-bookcard> Web Components.
 
 __cinderExport = {
 	id: "zlibrary-direct",
 	name: "Z-Library (Direct)",
-	version: "1.1.0",
+	version: "1.2.0",
 	icon: "📖",
 	description: "Direct downloads from Z-Library mirrors with IP rotation and Cloudflare bypass.",
 	contentType: "books",
@@ -118,7 +118,6 @@ __cinderExport = {
 		if (!page) page = 0;
 		cinder.log("[Z-Lib] Searching for: " + query + " (Page " + (page + 1) + ")");
 
-		// Z-Lib usually uses /s/query
 		var searchPath = "/s/" + encodeURIComponent(query);
 		if (page > 0) searchPath += "?page=" + (page + 1);
 
@@ -134,51 +133,63 @@ __cinderExport = {
 
 		var doc = cinder.parseHTML(result.data);
 		
-		// Broaden selectors to handle various mirror skins
-		var items = doc.querySelectorAll("table.resItemTable, div.resItemBox, .bookRow, tr.bookRow, .z-book-item");
+		// Broaden selectors: z-bookcard is for modern mirrors like zlib.li
+		var items = doc.querySelectorAll("z-bookcard, table.resItemTable, div.resItemBox, .bookRow, tr.bookRow");
 		cinder.log("[Z-Lib] Found " + items.length + " potential items in HTML");
 		
 		var results = [];
 		for (var i = 0; i < items.length; i++) {
 			try {
 				var item = items[i];
-				
-				// Try various title link selectors
-				var titleLink = item.querySelector(".itemTitle a, h3[itemprop='name'] a, a[href^='/book/'], .title a, a.resItemTitle");
-				if (!titleLink) {
-					// Fallback: any link with /book/ in it
-					titleLink = item.querySelector("a[href*='/book/']");
-				}
-				if (!titleLink) continue;
-
-				var title = titleLink.text().trim();
-				var url = titleLink.attr("href");
-				if (!url) continue;
-
-				// Make URL absolute if needed
-				if (url.indexOf("/") === 0) url = result.baseUrl + url;
-
+				var title = "";
 				var author = "";
-				var authorEl = item.querySelector("div.authors a, .authors, a[href^='/author/'], [itemprop='author']");
-				if (authorEl) author = authorEl.text().trim();
-
+				var url = "";
 				var format = "epub";
 				var size = "";
-				
-				// Extract format/size from property labels
-				var metaEls = item.querySelectorAll(".bookProperty, .property_value, .file-info");
-				for (var m = 0; m < metaEls.length; m++) {
-					var mText = metaEls[m].text().toLowerCase();
-					if (mText.indexOf("pdf") !== -1) format = "pdf";
-					else if (mText.indexOf("epub") !== -1) format = "epub";
-					else if (mText.indexOf("mobi") !== -1) format = "mobi";
+				var cover = "";
+
+				// Handle modern z-bookcard component
+				if (item.tagName().toLowerCase() === "z-bookcard") {
+					url = item.attr("href");
+					format = item.attr("extension") || "epub";
+					size = item.attr("filesize") || "";
 					
-					var sizeMatch = mText.match(/(\d+\.?\d*\s*(?:mb|kb|gb|mib|kib))/i);
-					if (sizeMatch) size = sizeMatch[1].toUpperCase();
+					var titleEl = item.querySelector("[slot='title']");
+					if (titleEl) title = titleEl.text().trim();
+					
+					var authorEl = item.querySelector("[slot='author']");
+					if (authorEl) author = authorEl.text().trim();
+					
+					var imgEl = item.querySelector("img");
+					if (imgEl) cover = imgEl.attr("data-src") || imgEl.attr("src") || "";
+				} else {
+					// Handle legacy table/div layouts
+					var titleLink = item.querySelector(".itemTitle a, h3[itemprop='name'] a, a[href^='/book/'], .title a, a.resItemTitle");
+					if (!titleLink) titleLink = item.querySelector("a[href*='/book/']");
+					if (!titleLink) continue;
+
+					title = titleLink.text().trim();
+					url = titleLink.attr("href");
+					
+					var authorEl = item.querySelector("div.authors a, .authors, a[href^='/author/'], [itemprop='author']");
+					if (authorEl) author = authorEl.text().trim();
+
+					var metaEls = item.querySelectorAll(".bookProperty, .property_value, .file-info");
+					for (var m = 0; m < metaEls.length; m++) {
+						var mText = metaEls[m].text().toLowerCase();
+						if (mText.indexOf("pdf") !== -1) format = "pdf";
+						else if (mText.indexOf("epub") !== -1) format = "epub";
+						
+						var sizeMatch = mText.match(/(\d+\.?\d*\s*(?:mb|kb|gb|mib|kib))/i);
+						if (sizeMatch) size = sizeMatch[1].toUpperCase();
+					}
+
+					var coverEl = item.querySelector("img.cover, img[itemprop='image'], .cover img");
+					if (coverEl) cover = coverEl.attr("src") || "";
 				}
 
-				var coverEl = item.querySelector("img.cover, img[itemprop='image'], .cover img");
-				var cover = coverEl ? coverEl.attr("src") : "";
+				if (!url) continue;
+				if (url.indexOf("/") === 0) url = result.baseUrl + url;
 				if (cover && cover.indexOf("/") === 0) cover = result.baseUrl + cover;
 
 				results.push({
@@ -186,7 +197,7 @@ __cinderExport = {
 					title: title,
 					author: author,
 					cover: cover,
-					format: format,
+					format: format.toLowerCase(),
 					size: size,
 					url: url,
 					source: "Z-Library"
@@ -214,7 +225,7 @@ __cinderExport = {
 		var doc = cinder.parseHTML(resp.data);
 		
 		// Look for download buttons with various patterns
-		var dlLink = doc.querySelector("a.addDownloadedBook, a.dlButton, a[href^='/dl/'], a.btn-primary, .download-button a");
+		var dlLink = doc.querySelector("a.addDownloadedBook, a.dlButton, a[href^='/dl/'], a.btn-primary, .download-button a, .btn-download");
 		
 		if (!dlLink) {
 			// Try regex if DOM fails

@@ -14,7 +14,7 @@
 		{
 			"id": "zlibrary-direct",
 			"name": "Z-Library (Direct)",
-			"version": "1.1.0",
+			"version": "1.2.0",
 			"description": "Scrapes Z-Library directly with domain fallbacks and IP Spoofing to avoid fast-download limits.",
 			"contentType": "books",
 			"scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/zlibrary.js",
