@@ -1,15 +1,15 @@
-// ─── Z-Library Direct Download Extension v1.8.0 ──────────────────
+// ─── Z-Library Direct Download Extension v1.9.0 ──────────────────
 //
-// Integrated Z-Library scraper with IPFS and Direct Mirror support.
-// v1.8.0: Specifically targets addDownloadedBook class to avoid reader links.
-// Skips streaming (reader) support to focus on reliable downloading.
+// Integrated Z-Library scraper with IPFS and TorBox support.
+// v1.9.0: Implements TorBox WebDL integration to bypass guest limits.
+// Also includes robust IPFS extraction for non-TorBox users.
 
 __cinderExport = {
 	id: "zlibrary-direct",
 	name: "Z-Library (Direct)",
-	version: "1.8.0",
+	version: "1.9.0",
 	icon: "📖",
-	description: "Advanced Z-Library scraper with IPFS bypass. Optimized for direct file extraction.",
+	description: "Advanced Z-Library scraper with IPFS bypass and TorBox support.",
 	contentType: "books",
 
 	capabilities: {
@@ -24,6 +24,13 @@ __cinderExport = {
 	getSettings: function() {
 		return [
 			{
+				id: "torbox_api_key",
+				label: "TorBox API Key (Optional)",
+				type: "text",
+				defaultValue: "",
+				description: "Used to bypass guest limits via TorBox WebDL."
+			},
+			{
 				id: "priority_source",
 				label: "Priority Source",
 				type: "select",
@@ -34,27 +41,15 @@ __cinderExport = {
 				],
 			},
 			{
-				id: "preferred_domain",
-				label: "Preferred Domain",
-				type: "select",
-				defaultValue: "zlib.li",
-				options: [
-					{ label: "zlib.li", value: "zlib.li" },
-					{ label: "z-lib.gs", value: "z-lib.gs" },
-					{ label: "z-library.rs", value: "z-library.rs" },
-					{ label: "singlelogin.re", value: "singlelogin.re" },
-				],
-			},
-			{
 				id: "ipfs_gateway",
 				label: "IPFS Gateway",
 				type: "select",
-				defaultValue: "cloudflare-ipfs.com",
+				defaultValue: "gateway.pinata.cloud",
 				options: [
+					{ label: "gateway.pinata.cloud", value: "gateway.pinata.cloud" },
 					{ label: "cloudflare-ipfs.com", value: "cloudflare-ipfs.com" },
 					{ label: "ipfs.io", value: "ipfs.io" },
 					{ label: "dweb.link", value: "dweb.link" },
-					{ label: "gateway.pinata.cloud", value: "gateway.pinata.cloud" },
 				],
 			}
 		];
@@ -66,8 +61,7 @@ __cinderExport = {
 		"zlib.li",
 		"z-lib.gs",
 		"z-library.rs",
-		"singlelogin.re",
-		"singlelogin.rs"
+		"singlelogin.re"
 	],
 
 	_getHeaders: async function(refererUrl) {
@@ -81,10 +75,7 @@ __cinderExport = {
 			"Sec-Fetch-Dest": "document",
 			"Upgrade-Insecure-Requests": "1"
 		};
-		
-		if (refererUrl) {
-			headers["Referer"] = refererUrl;
-		}
+		if (refererUrl) headers["Referer"] = refererUrl;
 		
 		// IP Spoofing
 		var ip = Math.floor(Math.random() * 255) + "." +
@@ -92,189 +83,129 @@ __cinderExport = {
 			     Math.floor(Math.random() * 255) + "." +
 			     Math.floor(Math.random() * 255);
 		headers["X-Forwarded-For"] = ip;
-		headers["X-Real-IP"] = ip;
-		
 		return headers;
 	},
 
 	_fetchWithFallback: async function(path) {
 		var pref = await cinder.store.get("preferred_domain");
 		var domains = this._DOMAINS.slice();
-
 		if (pref) {
 			domains = domains.filter(function(d) { return d !== pref; });
 			domains.unshift(pref);
 		}
-
-		var lastErr = null;
 		for (var i = 0; i < domains.length; i++) {
 			var url = "https://" + domains[i] + path;
 			try {
 				var headers = await this._getHeaders(url);
 				var resp = await cinder.fetchBrowser(url, { headers: headers });
 				if (resp.status === 200 && resp.data && resp.data.length > 500) {
-					if (resp.data.indexOf("No results found") !== -1 || resp.data.indexOf("Matching books not found") !== -1) {
-						return { data: resp.data, baseUrl: "https://" + domains[i], empty: true };
-					}
 					return { data: resp.data, baseUrl: "https://" + domains[i] };
 				}
-			} catch (err) {
-				cinder.warn("[Z-Lib] Mirror " + domains[i] + " failed: " + err);
-				lastErr = err;
-			}
+			} catch (err) {}
 		}
-		throw lastErr || new Error("All Z-Library mirrors failed to respond.");
+		throw new Error("Z-Library mirrors are currently unreachable.");
 	},
 
 	// ── Search ──
 
 	search: async function(query, page) {
 		if (!page) page = 0;
-		cinder.log("[Z-Lib] Searching: " + query + " (Page " + (page + 1) + ")");
-
 		var searchPath = "/s/" + encodeURIComponent(query);
 		if (page > 0) searchPath += "?page=" + (page + 1);
-
-		var result = null;
-		try {
-			result = await this._fetchWithFallback(searchPath);
-		} catch (e) {
-			cinder.error("[Z-Lib] Search failed: " + e);
-			return [];
-		}
-
-		if (result.empty) return [];
-
+		var result = await this._fetchWithFallback(searchPath);
 		var doc = cinder.parseHTML(result.data);
 		var cards = doc.querySelectorAll("z-bookcard");
-		
 		var results = [];
 		for (var i = 0; i < cards.length; i++) {
 			try {
 				var card = cards[i];
-				var titleEl = card.querySelector("[slot='title']");
-				var authorEl = card.querySelector("[slot='author']");
-				var imgEl = card.querySelector("img");
-				
-				var title = titleEl ? titleEl.text().trim() : "Unknown Title";
-				var author = authorEl ? authorEl.text().trim() : "Unknown Author";
-				var id = card.attr("id");
+				var title = card.querySelector("[slot='title']").text().trim();
+				var author = card.querySelector("[slot='author']").text().trim();
 				var url = card.attr("href");
-				var format = card.attr("extension") || "epub";
-				var size = card.attr("filesize") || "";
-				var cover = imgEl ? (imgEl.attr("data-src") || imgEl.attr("src") || "") : "";
-
-				if (!url) continue;
 				if (url.indexOf("/") === 0) url = result.baseUrl + url;
-				if (cover && cover.indexOf("/") === 0) cover = result.baseUrl + cover;
-
 				results.push({
-					id: id || url,
+					id: card.attr("id"),
 					title: title,
 					author: author,
-					cover: cover,
-					format: format.toLowerCase(),
-					size: size,
+					cover: result.baseUrl + card.querySelector("img").attr("data-src"),
+					format: (card.attr("extension") || "epub").toLowerCase(),
+					size: card.attr("filesize") || "",
 					url: url,
 					source: "Z-Library"
 				});
-			} catch (err) {
-				cinder.warn("[Z-Lib] Card parse error: " + err);
-			}
+			} catch (err) {}
 		}
-
 		return results;
 	},
 
 	// ── Resolve ──
 
 	resolve: async function(item) {
-		var detailUrl = item.url;
-		cinder.log("[Z-Lib] Resolving: " + item.title + " (" + item.format + ")");
-
-		var headers = await this._getHeaders(detailUrl);
-		var resp = await cinder.fetchBrowser(detailUrl, { headers: headers });
+		cinder.log("[Z-Lib] Resolving: " + item.title);
+		var headers = await this._getHeaders(item.url);
+		var resp = await cinder.fetchBrowser(item.url, { headers: headers });
 		if (!resp.data) throw new Error("Failed to load book page.");
 
 		var html = resp.data;
 		var doc = cinder.parseHTML(html);
-		
-		var priority = (await cinder.store.get("priority_source")) || "mirror";
 
-		// 1. Link Extraction Function
-		var extractMirrorLink = function() {
-			// Targeted selection: find links with addDownloadedBook or /dl/ path,
-			// but specifically EXCLUDE the reader-link class.
-			var dlLink = doc.querySelector("a.addDownloadedBook, a[href^='/dl/']");
-			
-			// Fallback: if addDownloadedBook not found, try dlButton but NOT reader-link
-			if (!dlLink) {
-				var buttons = doc.querySelectorAll("a.dlButton");
-				for (var i = 0; i < buttons.length; i++) {
-					if (buttons[i].attr("class").indexOf("reader-link") === -1) {
-						dlLink = buttons[i];
-						break;
-					}
+		// 1. Check for TorBox Integration
+		var tbKey = await cinder.store.get("torbox_api_key");
+		var dlLink = doc.querySelector("a.addDownloadedBook, a[href^='/dl/']");
+		var mirrorUrl = null;
+		if (dlLink) {
+			mirrorUrl = dlLink.attr("href");
+			if (mirrorUrl.indexOf("/") === 0) {
+				mirrorUrl = item.url.match(/^https?:\/\/[^\/]+/)[0] + mirrorUrl;
+			}
+		}
+
+		if (tbKey && mirrorUrl) {
+			cinder.log("[Z-Lib] Using TorBox WebDL to proxy download...");
+			try {
+				var tbResp = await cinder.fetchBrowser("https://api.torbox.app/v1/api/webdl", {
+					method: "POST",
+					headers: { "Authorization": "Bearer " + tbKey, "Content-Type": "application/json" },
+					body: JSON.stringify({ link: mirrorUrl, type: "webdl" })
+				});
+				var tbData = JSON.parse(tbResp.data);
+				if (tbData.success && tbData.data && tbData.data.download_url) {
+					cinder.log("[Z-Lib] TorBox Proxied: " + tbData.data.download_url);
+					return { url: tbData.data.download_url };
 				}
+			} catch (e) {
+				cinder.warn("[Z-Lib] TorBox WebDL failed, falling back...");
 			}
+		}
 
-			if (dlLink) {
-				var finalUrl = dlLink.attr("href");
-				if (finalUrl && finalUrl.indexOf("/") === 0) {
-					var domain = detailUrl.match(/^https?:\/\/[^\/]+/)[0];
-					finalUrl = domain + finalUrl;
-				}
-				return finalUrl;
+		// 2. IPFS Extraction (The most robust non-proxied method)
+		var gateway = (await cinder.store.get("ipfs_gateway")) || "gateway.pinata.cloud";
+		var filename = encodeURIComponent(item.title + "." + item.format);
+		var cids = [];
+		var copyElements = doc.querySelectorAll("[data-copy]");
+		for (var i = 0; i < copyElements.length; i++) {
+			var cid = copyElements[i].attr("data-copy");
+			if (cid && cid.length > 30) {
+				if (cid.indexOf("Qm") === 0) cids.unshift(cid);
+				else if (cid.indexOf("ba") === 0) cids.push(cid);
 			}
-			return null;
-		};
+		}
+		if (cids.length === 0) {
+			var regexMatch = html.match(/(?:Qm[1-9A-HJ-NP-Za-km-z]{44}|ba[a-z2-7]{57})/g);
+			if (regexMatch) cids = regexMatch;
+		}
 
-		var extractIpfsLink = async function() {
-			var gateway = (await cinder.store.get("ipfs_gateway")) || "cloudflare-ipfs.com";
-			var filename = encodeURIComponent(item.title + "." + item.format);
-			var cids = [];
-			var copyElements = doc.querySelectorAll("[data-copy]");
-			for (var i = 0; i < copyElements.length; i++) {
-				var cid = copyElements[i].attr("data-copy");
-				if (cid && cid.length > 30) {
-					if (cid.indexOf("Qm") === 0) cids.unshift(cid);
-					else if (cid.indexOf("ba") === 0) cids.push(cid);
-				}
-			}
-			if (cids.length === 0) {
-				var regexMatch = html.match(/(?:Qm[1-9A-HJ-NP-Za-km-z]{44}|ba[a-z2-7]{57})/g);
-				if (regexMatch) cids = regexMatch;
-			}
-			if (cids.length > 0) {
-				var selectedCid = cids.find(function(c) { return c.indexOf("Qm") === 0; }) || cids[0];
-				return "https://" + gateway + "/ipfs/" + selectedCid + "?filename=" + filename;
-			}
-			return null;
-		};
+		if (cids.length > 0) {
+			var selectedCid = cids.find(function(c) { return c.indexOf("Qm") === 0; }) || cids[0];
+			var ipfsUrl = "https://" + gateway + "/ipfs/" + selectedCid + "?filename=" + filename;
+			cinder.log("[Z-Lib] Resolved IPFS: " + ipfsUrl);
+			return { url: ipfsUrl };
+		}
 
-		// 2. Logic Flow
-		if (priority === "mirror") {
-			var mirrorUrl = extractMirrorLink();
-			if (mirrorUrl) {
-				cinder.log("[Z-Lib] Using Direct Mirror: " + mirrorUrl);
-				return { url: mirrorUrl, headers: headers };
-			}
-			var ipfsUrl = await extractIpfsLink();
-			if (ipfsUrl) {
-				cinder.log("[Z-Lib] Fallback to IPFS: " + ipfsUrl);
-				return { url: ipfsUrl };
-			}
-		} else {
-			var ipfsUrl = await extractIpfsLink();
-			if (ipfsUrl) {
-				cinder.log("[Z-Lib] Using IPFS Bypass: " + ipfsUrl);
-				return { url: ipfsUrl };
-			}
-			var mirrorUrl = extractMirrorLink();
-			if (mirrorUrl) {
-				cinder.log("[Z-Lib] Fallback to Direct Mirror: " + mirrorUrl);
-				return { url: mirrorUrl, headers: headers };
-			}
+		// 3. Last Resort: Direct Mirror (likely HTML limit page if you see Litera)
+		if (mirrorUrl) {
+			cinder.log("[Z-Lib] Using Direct Mirror (Caution: limit may be active): " + mirrorUrl);
+			return { url: mirrorUrl, headers: headers };
 		}
 
 		throw new Error("No guest-accessible download or IPFS CID found.");
