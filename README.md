@@ -9,6 +9,9 @@ To use these extensions in Cinder, go to **Settings > Extensions > Add Repositor
 https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/repo.json
 ```
 
+## GitHub Repository
+[TrexxyMon/Cinder-Extensions-Testing](https://github.com/TrexxyMon/Cinder-Extensions-Testing)
+
 ## Available Extensions
 - **Z-Library (Direct)**: Scrapes Z-Library mirrors with IP rotation and Cloudflare bypass.
 - **Anna's Archive**: Fast downloads from Anna's Archive with multiple acceleration strategies.

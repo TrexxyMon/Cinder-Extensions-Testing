@@ -1,14 +1,15 @@
-// ─── Z-Library Direct Download Extension v1.3.0 ──────────────────
+// ─── Z-Library Direct Download Extension v1.5.0 ──────────────────
 //
-// Integrated Z-Library scraper with dynamic IP spoofing and domain fallbacks.
-// Prioritizes IPFS links to bypass login requirements on mirrors.
+// Integrated Z-Library scraper with IPFS CID extraction.
+// Bypasses guest limits by resolving IPFS CIDs via gateways.
+// Supports both downloading and direct reader streaming links.
 
 __cinderExport = {
 	id: "zlibrary-direct",
 	name: "Z-Library (Direct)",
-	version: "1.3.0",
+	version: "1.5.0",
 	icon: "📖",
-	description: "Direct downloads from Z-Library mirrors with IP rotation and IPFS bypass.",
+	description: "Advanced Z-Library scraper with IPFS bypass and direct reader support.",
 	contentType: "books",
 
 	capabilities: {
@@ -35,10 +36,16 @@ __cinderExport = {
 				],
 			},
 			{
-				id: "enable_ip_spoofing",
-				label: "IP Spoofing (Bypass Limits)",
-				type: "toggle",
-				defaultValue: true,
+				id: "ipfs_gateway",
+				label: "IPFS Gateway",
+				type: "select",
+				defaultValue: "ipfs.io",
+				options: [
+					{ label: "ipfs.io", value: "ipfs.io" },
+					{ label: "cloudflare-ipfs.com", value: "cloudflare-ipfs.com" },
+					{ label: "gateway.pinata.cloud", value: "gateway.pinata.cloud" },
+					{ label: "dweb.link", value: "dweb.link" },
+				],
 			}
 		];
 	},
@@ -50,36 +57,38 @@ __cinderExport = {
 		"z-lib.gs",
 		"z-library.rs",
 		"singlelogin.re",
-		"singlelogin.rs",
-		"1lib.sk"
+		"singlelogin.rs"
 	],
-
-	_getRandomIP: function() {
-		return Math.floor(Math.random() * 255) + "." +
-			   Math.floor(Math.random() * 255) + "." +
-			   Math.floor(Math.random() * 255) + "." +
-			   Math.floor(Math.random() * 255);
-	},
 
 	_getHeaders: async function(url) {
 		var headers = {
-			"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
-			"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+			"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+			"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+			"Accept-Language": "en-US,en;q=0.9",
+			"Cache-Control": "max-age=0",
+			"Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+			"Sec-Ch-Ua-Mobile": "?0",
+			"Sec-Ch-Ua-Platform": '"Windows"',
+			"Upgrade-Insecure-Requests": "1"
 		};
 		
 		if (url) {
 			try {
-				var domain = url.match(/^https?:\/\/[^\/]+/)[0];
-				headers["Referer"] = domain + "/";
+				var domainMatch = url.match(/^https?:\/\/[^\/]+/);
+				if (domainMatch) {
+					headers["Referer"] = domainMatch[0] + "/";
+					headers["Origin"] = domainMatch[0];
+				}
 			} catch (e) {}
 		}
 		
-		var spoof = await cinder.store.get("enable_ip_spoofing");
-		if (spoof !== "false") {
-			var ip = this._getRandomIP();
-			headers["X-Forwarded-For"] = ip;
-			headers["X-Real-IP"] = ip;
-		}
+		// IP Spoofing (Randomize X-Forwarded-For)
+		var ip = Math.floor(Math.random() * 255) + "." +
+			     Math.floor(Math.random() * 255) + "." +
+			     Math.floor(Math.random() * 255) + "." +
+			     Math.floor(Math.random() * 255);
+		headers["X-Forwarded-For"] = ip;
+		headers["X-Real-IP"] = ip;
 		
 		return headers;
 	},
@@ -94,13 +103,10 @@ __cinderExport = {
 		}
 
 		var lastErr = null;
-
 		for (var i = 0; i < domains.length; i++) {
 			var url = "https://" + domains[i] + path;
 			try {
 				var headers = await this._getHeaders(url);
-				cinder.log("[Z-Lib] Trying domain: " + domains[i] + " (Attempt " + (i+1) + ")");
-				
 				var resp = await cinder.fetchBrowser(url, { headers: headers });
 				if (resp.status === 200 && resp.data && resp.data.length > 500) {
 					if (resp.data.indexOf("No results found") !== -1 || resp.data.indexOf("Matching books not found") !== -1) {
@@ -109,6 +115,7 @@ __cinderExport = {
 					return { data: resp.data, baseUrl: "https://" + domains[i] };
 				}
 			} catch (err) {
+				cinder.warn("[Z-Lib] Mirror " + domains[i] + " failed: " + err);
 				lastErr = err;
 			}
 		}
@@ -119,7 +126,7 @@ __cinderExport = {
 
 	search: async function(query, page) {
 		if (!page) page = 0;
-		cinder.log("[Z-Lib] Searching for: " + query + " (Page " + (page + 1) + ")");
+		cinder.log("[Z-Lib] Searching: " + query + " (Page " + (page + 1) + ")");
 
 		var searchPath = "/s/" + encodeURIComponent(query);
 		if (page > 0) searchPath += "?page=" + (page + 1);
@@ -128,71 +135,40 @@ __cinderExport = {
 		try {
 			result = await this._fetchWithFallback(searchPath);
 		} catch (e) {
-			cinder.error("[Z-Lib] Search fetch failed: " + e);
+			cinder.error("[Z-Lib] Search failed: " + e);
 			return [];
 		}
 
 		if (result.empty) return [];
 
 		var doc = cinder.parseHTML(result.data);
-		var items = doc.querySelectorAll("z-bookcard, table.resItemTable, div.resItemBox, .bookRow, tr.bookRow");
+		
+		// Target the 2026 z-bookcard structure
+		var cards = doc.querySelectorAll("z-bookcard");
+		cinder.log("[Z-Lib] Found " + cards.length + " bookcards");
 		
 		var results = [];
-		for (var i = 0; i < items.length; i++) {
+		for (var i = 0; i < cards.length; i++) {
 			try {
-				var item = items[i];
-				var title = "";
-				var author = "";
-				var url = "";
-				var format = "epub";
-				var size = "";
-				var cover = "";
-
-				var tag = (item.tagName || "").toLowerCase();
-				if (tag === "z-bookcard") {
-					url = item.attr("href");
-					format = item.attr("extension") || "epub";
-					size = item.attr("filesize") || "";
-					
-					var titleEl = item.querySelector("[slot='title']");
-					if (titleEl) title = titleEl.text().trim();
-					
-					var authorEl = item.querySelector("[slot='author']");
-					if (authorEl) author = authorEl.text().trim();
-					
-					var imgEl = item.querySelector("img");
-					if (imgEl) cover = imgEl.attr("data-src") || imgEl.attr("src") || "";
-				} else {
-					var titleLink = item.querySelector(".itemTitle a, h3[itemprop='name'] a, a[href^='/book/'], .title a, a.resItemTitle");
-					if (!titleLink) titleLink = item.querySelector("a[href*='/book/']");
-					if (!titleLink) continue;
-
-					title = titleLink.text().trim();
-					url = titleLink.attr("href");
-					
-					var authorEl = item.querySelector("div.authors a, .authors, a[href^='/author/'], [itemprop='author']");
-					if (authorEl) author = authorEl.text().trim();
-
-					var metaEls = item.querySelectorAll(".bookProperty, .property_value, .file-info");
-					for (var m = 0; m < metaEls.length; m++) {
-						var mText = metaEls[m].text().toLowerCase();
-						if (mText.indexOf("pdf") !== -1) format = "pdf";
-						else if (mText.indexOf("epub") !== -1) format = "epub";
-						
-						var sizeMatch = mText.match(/(\d+\.?\d*\s*(?:mb|kb|gb|mib|kib))/i);
-						if (sizeMatch) size = sizeMatch[1].toUpperCase();
-					}
-
-					var coverEl = item.querySelector("img.cover, img[itemprop='image'], .cover img");
-					if (coverEl) cover = coverEl.attr("src") || "";
-				}
+				var card = cards[i];
+				var titleEl = card.querySelector("[slot='title']");
+				var authorEl = card.querySelector("[slot='author']");
+				var imgEl = card.querySelector("img");
+				
+				var title = titleEl ? titleEl.text().trim() : "Unknown Title";
+				var author = authorEl ? authorEl.text().trim() : "Unknown Author";
+				var id = card.attr("id");
+				var url = card.attr("href");
+				var format = card.attr("extension") || "epub";
+				var size = card.attr("filesize") || "";
+				var cover = imgEl ? (imgEl.attr("data-src") || imgEl.attr("src") || "") : "";
 
 				if (!url) continue;
 				if (url.indexOf("/") === 0) url = result.baseUrl + url;
 				if (cover && cover.indexOf("/") === 0) cover = result.baseUrl + cover;
 
 				results.push({
-					id: url,
+					id: id || url,
 					title: title,
 					author: author,
 					cover: cover,
@@ -201,7 +177,9 @@ __cinderExport = {
 					url: url,
 					source: "Z-Library"
 				});
-			} catch (err) {}
+			} catch (err) {
+				cinder.warn("[Z-Lib] Card parse error: " + err);
+			}
 		}
 
 		return results;
@@ -211,48 +189,71 @@ __cinderExport = {
 
 	resolve: async function(item) {
 		var detailUrl = item.url;
-		cinder.log("[Z-Lib] Resolving download for: " + item.title);
+		cinder.log("[Z-Lib] Resolving: " + item.title + " (" + item.format + ")");
 
 		var headers = await this._getHeaders(detailUrl);
 		var resp = await cinder.fetchBrowser(detailUrl, { headers: headers });
-		
-		if (!resp.data) throw new Error("Failed to load detail page.");
+		if (!resp.data) throw new Error("Failed to load book page.");
 
-		var doc = cinder.parseHTML(resp.data);
+		var html = resp.data;
+		var doc = cinder.parseHTML(html);
 		
-		// 1. Try IPFS links first (bypasses login requirement on mirrors)
-		var ipfsLinks = doc.querySelectorAll("a[href*='/ipfs/']");
-		for (var i = 0; i < ipfsLinks.length; i++) {
-			var link = ipfsLinks[i].attr("href");
-			if (link) {
-				cinder.log("[Z-Lib] Found IPFS link: " + link);
-				return { url: link };
+		// 1. Check for Reader Link (Streaming support)
+		var readerLink = doc.querySelector("a.reader-link");
+		if (readerLink) {
+			var readerUrl = readerLink.attr("href");
+			if (readerUrl) {
+				cinder.log("[Z-Lib] Found Reader link: " + readerUrl);
+				// If we have an IPFS link as well, prioritize it for download parity,
+				// but we'll check for it first.
 			}
 		}
 
-		// 2. Fallback to standard download buttons
-		var dlLink = doc.querySelector("a.addDownloadedBook, a.dlButton, a[href^='/dl/'], a.btn-primary, .download-button a, .btn-download");
+		// 2. IPFS Extraction (The most robust method for guests)
+		// Pattern: Look for data-copy attributes or text patterns containing CIDs
+		var gateway = (await cinder.store.get("ipfs_gateway")) || "ipfs.io";
+		var filename = encodeURIComponent(item.title + "." + item.format);
+
+		// A. Look for CID in elements (the "IPFS: CID" section)
+		// Many mirrors use data-copy on the CID text
+		var copyElements = doc.querySelectorAll("[data-copy]");
+		for (var i = 0; i < copyElements.length; i++) {
+			var cid = copyElements[i].attr("data-copy");
+			// CIDs are usually 46 chars (Qm...) or 59 chars (ba...)
+			if (cid && cid.length > 30 && (cid.indexOf("Qm") === 0 || cid.indexOf("ba") === 0)) {
+				var ipfsUrl = "https://" + gateway + "/ipfs/" + cid + "?filename=" + filename;
+				cinder.log("[Z-Lib] Resolved IPFS via data-copy: " + ipfsUrl);
+				return { url: ipfsUrl };
+			}
+		}
+
+		// B. Regex fallback on raw HTML for CID patterns
+		var cidMatch = html.match(/(?:Qm[1-9A-HJ-NP-Za-km-z]{44}|ba[a-z2-7]{57})/g);
+		if (cidMatch) {
+			// Take the first valid CID found
+			var cid = cidMatch[0];
+			var ipfsUrl = "https://" + gateway + "/ipfs/" + cid + "?filename=" + filename;
+			cinder.log("[Z-Lib] Resolved IPFS via Regex: " + ipfsUrl);
+			return { url: ipfsUrl };
+		}
+
+		// 3. Fallback to Reader URL if it looks like a direct resource
+		if (readerLink && readerLink.attr("href")) {
+			return { url: readerLink.attr("href") };
+		}
+
+		// 4. Last Resort: The standard download link (likely triggers guest limit HTML)
+		var dlLink = doc.querySelector("a.addDownloadedBook, a.dlButton, a[href^='/dl/']");
 		if (dlLink) {
 			var finalUrl = dlLink.attr("href");
 			if (finalUrl.indexOf("/") === 0) {
 				var domain = detailUrl.match(/^https?:\/\/[^\/]+/)[0];
 				finalUrl = domain + finalUrl;
 			}
-			cinder.log("[Z-Lib] Using standard download URL: " + finalUrl);
+			cinder.log("[Z-Lib] Fallback to direct DL link (Caution: may be HTML): " + finalUrl);
 			return { url: finalUrl, headers: headers };
 		}
 
-		// 3. Last resort: Regex for /dl/ links
-		var match = resp.data.match(/href="(\/dl\/[^"]+)"/);
-		if (match) {
-			var url = match[1];
-			if (url.indexOf("/") === 0) {
-				var domain = detailUrl.match(/^https?:\/\/[^\/]+/)[0];
-				url = domain + url;
-			}
-			return { url: url, headers: headers };
-		}
-
-		throw new Error("Download button not found. Z-Library may be requiring login for this book.");
+		throw new Error("No guest-accessible download or IPFS CID found. This book may require a Z-Library account.");
 	}
 };
