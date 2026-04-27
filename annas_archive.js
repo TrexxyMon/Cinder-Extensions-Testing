@@ -13,7 +13,7 @@
 __cinderExport = {
 	id: "annas-archive-slow",
 	name: "Anna's Archive",
-	version: "2.1.0",
+	version: "2.1.1",
 	icon: "📚",
 	description: "Fast downloads from Anna's Archive with multiple acceleration strategies.",
 	contentType: "books",

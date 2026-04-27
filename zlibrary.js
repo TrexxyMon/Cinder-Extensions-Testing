@@ -7,7 +7,7 @@
 __cinderExport = {
 	id: "zlibrary-direct",
 	name: "Z-Library (Direct)",
-	version: "1.5.0",
+	version: "1.5.1",
 	icon: "📖",
 	description: "Advanced Z-Library scraper with IPFS bypass and direct reader support.",
 	contentType: "books",
