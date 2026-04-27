@@ -1,12 +1,12 @@
-// ─── Z-Library Direct Download Extension v1.2.1 ──────────────────
+// ─── Z-Library Direct Download Extension v1.2.2 ──────────────────
 //
 // Integrated Z-Library scraper with dynamic IP spoofing and domain fallbacks.
-// Fixed tagName() property access bug.
+// Added Referer headers and improved logging.
 
 __cinderExport = {
 	id: "zlibrary-direct",
 	name: "Z-Library (Direct)",
-	version: "1.2.1",
+	version: "1.2.2",
 	icon: "📖",
 	description: "Direct downloads from Z-Library mirrors with IP rotation and Cloudflare bypass.",
 	contentType: "books",
@@ -61,11 +61,16 @@ __cinderExport = {
 			   Math.floor(Math.random() * 255);
 	},
 
-	_getHeaders: async function() {
+	_getHeaders: async function(url) {
 		var headers = {
 			"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
 			"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 		};
+		
+		if (url) {
+			var domain = url.match(/^https?:\/\/[^\/]+/)[0];
+			headers["Referer"] = domain + "/";
+		}
 		
 		var spoof = await cinder.store.get("enable_ip_spoofing");
 		if (spoof !== "false") {
@@ -87,14 +92,16 @@ __cinderExport = {
 		}
 
 		var lastErr = null;
-		var headers = await this._getHeaders();
 
 		for (var i = 0; i < domains.length; i++) {
 			var url = "https://" + domains[i] + path;
 			try {
+				var headers = await this._getHeaders(url);
 				cinder.log("[Z-Lib] Trying domain: " + domains[i] + " (Attempt " + (i+1) + ")");
 				
 				var resp = await cinder.fetchBrowser(url, { headers: headers });
+				cinder.log("[Z-Lib] " + domains[i] + " response: status=" + resp.status + ", length=" + (resp.data ? resp.data.length : 0));
+
 				if (resp.status === 200 && resp.data && resp.data.length > 500) {
 					// Check if we hit a "No results found" or error page
 					if (resp.data.indexOf("No results found") !== -1 || resp.data.indexOf("Matching books not found") !== -1) {
@@ -148,8 +155,6 @@ __cinderExport = {
 				var size = "";
 				var cover = "";
 
-				// Handle modern z-bookcard component
-				// FIX: tagName is a property, not a function
 				var tag = (item.tagName || "").toLowerCase();
 				if (tag === "z-bookcard") {
 					url = item.attr("href");
@@ -165,7 +170,6 @@ __cinderExport = {
 					var imgEl = item.querySelector("img");
 					if (imgEl) cover = imgEl.attr("data-src") || imgEl.attr("src") || "";
 				} else {
-					// Handle legacy table/div layouts
 					var titleLink = item.querySelector(".itemTitle a, h3[itemprop='name'] a, a[href^='/book/'], .title a, a.resItemTitle");
 					if (!titleLink) titleLink = item.querySelector("a[href*='/book/']");
 					if (!titleLink) continue;
@@ -219,18 +223,16 @@ __cinderExport = {
 		var detailUrl = item.url;
 		cinder.log("[Z-Lib] Resolving download for: " + item.title);
 
-		var headers = await this._getHeaders();
+		var headers = await this._getHeaders(detailUrl);
 		var resp = await cinder.fetchBrowser(detailUrl, { headers: headers });
 		
 		if (!resp.data) throw new Error("Failed to load detail page.");
 
 		var doc = cinder.parseHTML(resp.data);
 		
-		// Look for download buttons with various patterns
 		var dlLink = doc.querySelector("a.addDownloadedBook, a.dlButton, a[href^='/dl/'], a.btn-primary, .download-button a, .btn-download");
 		
 		if (!dlLink) {
-			// Try regex if DOM fails
 			var match = resp.data.match(/href="(\/dl\/[^"]+)"/);
 			if (match) {
 				var url = match[1];
