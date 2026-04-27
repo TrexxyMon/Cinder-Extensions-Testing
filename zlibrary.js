@@ -1,13 +1,13 @@
-// ─── Z-Library Direct Download Extension v1.6.0 ──────────────────
+// ─── Z-Library Direct Download Extension v1.6.1 ──────────────────
 //
 // Integrated Z-Library scraper with IPFS CID extraction.
 // Bypasses guest limits by resolving IPFS CIDs via gateways.
-// v1.6.0: Prioritizes Cloudflare gateway for speed and better CID selection.
+// v1.6.1: Improved link extraction for direct mirror links as requested.
 
 __cinderExport = {
 	id: "zlibrary-direct",
 	name: "Z-Library (Direct)",
-	version: "1.6.0",
+	version: "1.6.1",
 	icon: "📖",
 	description: "Advanced Z-Library scraper with IPFS bypass and direct reader support.",
 	contentType: "books",
@@ -65,7 +65,7 @@ __cinderExport = {
 			"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 			"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
 			"Accept-Language": "en-US,en;q=0.9",
-			"Cache-Control": "max-age=0",
+			"Cache-Control": "no-cache",
 			"Upgrade-Insecure-Requests": "1"
 		};
 		
@@ -191,51 +191,60 @@ __cinderExport = {
 		var html = resp.data;
 		var doc = cinder.parseHTML(html);
 		
-		// 1. IPFS Extraction (The most robust method for guests)
+		// 1. Direct Mirror Link (The one from the source: btn-default addDownloadedBook)
+		var dlLink = doc.querySelector("a.addDownloadedBook, a.dlButton, a[href^='/dl/']");
+		if (dlLink) {
+			var finalUrl = dlLink.attr("href");
+			if (finalUrl && finalUrl.indexOf("/") === 0) {
+				var domain = detailUrl.match(/^https?:\/\/[^\/]+/)[0];
+				finalUrl = domain + finalUrl;
+			}
+			if (finalUrl) {
+				cinder.log("[Z-Lib] Found direct mirror link: " + finalUrl);
+				// We keep this as an option, but we will also look for IPFS
+			}
+		}
+
+		// 2. IPFS Extraction
 		var gateway = (await cinder.store.get("ipfs_gateway")) || "cloudflare-ipfs.com";
 		var filename = encodeURIComponent(item.title + "." + item.format);
 
-		// Prioritize Qm CIDs (Standard IPFS) over ba (Blake2b)
 		var cids = [];
 		var copyElements = doc.querySelectorAll("[data-copy]");
 		for (var i = 0; i < copyElements.length; i++) {
 			var cid = copyElements[i].attr("data-copy");
 			if (cid && cid.length > 30) {
-				if (cid.indexOf("Qm") === 0) cids.unshift(cid); // Qm comes first
+				if (cid.indexOf("Qm") === 0) cids.unshift(cid);
 				else if (cid.indexOf("ba") === 0) cids.push(cid);
 			}
 		}
 
-		// Regex fallback if no elements found
 		if (cids.length === 0) {
 			var regexMatch = html.match(/(?:Qm[1-9A-HJ-NP-Za-km-z]{44}|ba[a-z2-7]{57})/g);
 			if (regexMatch) cids = regexMatch;
 		}
 
 		if (cids.length > 0) {
-			// Try to find the best CID (Qm preferred)
 			var selectedCid = cids.find(function(c) { return c.indexOf("Qm") === 0; }) || cids[0];
 			var ipfsUrl = "https://" + gateway + "/ipfs/" + selectedCid + "?filename=" + filename;
 			cinder.log("[Z-Lib] Resolved IPFS: " + ipfsUrl);
 			return { url: ipfsUrl };
 		}
 
-		// 2. Reader Link (Streaming support)
-		var readerLink = doc.querySelector("a.reader-link");
-		if (readerLink && readerLink.attr("href")) {
-			cinder.log("[Z-Lib] Fallback to Reader URL: " + readerLink.attr("href"));
-			return { url: readerLink.attr("href") };
-		}
-
-		// 3. Last Resort: Standard Download
-		var dlLink = doc.querySelector("a.addDownloadedBook, a.dlButton, a[href^='/dl/']");
-		if (dlLink) {
+		// 3. Fallback to Mirror Link if IPFS failed
+		if (dlLink && dlLink.attr("href")) {
 			var finalUrl = dlLink.attr("href");
 			if (finalUrl.indexOf("/") === 0) {
 				var domain = detailUrl.match(/^https?:\/\/[^\/]+/)[0];
 				finalUrl = domain + finalUrl;
 			}
 			return { url: finalUrl, headers: headers };
+		}
+
+		// 4. Reader Link (Streaming)
+		var readerLink = doc.querySelector("a.reader-link");
+		if (readerLink && readerLink.attr("href")) {
+			return { url: readerLink.attr("href") };
 		}
 
 		throw new Error("No guest-accessible download or IPFS CID found.");
