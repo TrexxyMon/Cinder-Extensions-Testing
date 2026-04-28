@@ -1,15 +1,18 @@
-// ─── Z-Library Direct Download Extension v1.9.1 ──────────────────
+// ─── Z-Library Direct Download Extension v1.9.2 ──────────────────
 //
-// Integrated Z-Library scraper with TorBox and IPFS.
-// v1.9.1: Auto-pulls TorBox key from global settings and implements 
-// immediate WebDL cleanup to preserve account limits.
+// Integrated Z-Library scraper with TorBox Native support and IPFS.
+// v1.9.2: 
+// 1. Delegates TorBox WebDL entirely to Cinder's native DownloadManager 
+//    so it can properly delete the WebDL *after* the file saves to disk.
+// 2. Removes custom headers from the download response so Cinder's 
+//    DownloadManager properly probes the URLs and rejects HTML limit pages.
 
 __cinderExport = {
 	id: "zlibrary-direct",
 	name: "Z-Library (Direct)",
-	version: "1.9.1",
+	version: "1.9.2",
 	icon: "📖",
-	description: "Advanced Z-Library scraper with TorBox and IPFS bypass.",
+	description: "Z-Library scraper with native TorBox WebDL and multi-gateway IPFS bypass.",
 	contentType: "books",
 
 	capabilities: {
@@ -24,20 +27,13 @@ __cinderExport = {
 	getSettings: function() {
 		return [
 			{
-				id: "torbox_api_key",
-				label: "TorBox API Key (Manual Override)",
-				type: "text",
-				defaultValue: "",
-				description: "Optional. If blank, the extension pulls from Cinder's global Debrid settings."
-			},
-			{
 				id: "priority_source",
 				label: "Priority Source",
 				type: "select",
-				defaultValue: "mirror",
+				defaultValue: "ipfs",
 				options: [
-					{ label: "Direct Mirror (Fastest)", value: "mirror" },
-					{ label: "IPFS Bypass (Reliable)", value: "ipfs" }
+					{ label: "IPFS Bypass (Reliable - Default)", value: "ipfs" },
+					{ label: "Direct Mirror (Fastest)", value: "mirror" }
 				],
 			}
 		];
@@ -114,10 +110,7 @@ __cinderExport = {
 		var html = resp.data;
 		var doc = cinder.parseHTML(html);
 
-		// 1. TorBox Logic
-		// Try to pull key from: 1. Extension Setting, 2. Global Debrid Setting
-		var tbKey = (await cinder.store.get("torbox_api_key")) || (await cinder.store.get("cinder_debrid_apikey_torbox")) || (await cinder.store.get("debrid_torbox_key"));
-		
+		// 1. Direct Mirror Link (Usually triggers HTML limits, but TorBox WebDL can bypass)
 		var dlLink = doc.querySelector("a.addDownloadedBook, a[href^='/dl/']");
 		var mirrorUrl = null;
 		if (dlLink) {
@@ -125,38 +118,7 @@ __cinderExport = {
 			if (mirrorUrl.indexOf("/") === 0) mirrorUrl = item.url.match(/^https?:\/\/[^\/]+/)[0] + mirrorUrl;
 		}
 
-		if (tbKey && mirrorUrl) {
-			cinder.log("[Z-Lib] Attempting TorBox WebDL Proxy...");
-			try {
-				var tbResp = await cinder.fetchBrowser("https://api.torbox.app/v1/api/webdl", {
-					method: "POST",
-					headers: { "Authorization": "Bearer " + tbKey, "Content-Type": "application/json" },
-					body: JSON.stringify({ link: mirrorUrl, type: "webdl" })
-				});
-				var tbData = JSON.parse(tbResp.data);
-				if (tbData.success && tbData.data && tbData.data.download_url) {
-					var finalUrl = tbData.data.download_url;
-					var webdlId = tbData.data.id;
-					
-					// Immediate Cleanup: Delete the WebDL from TorBox since we have the URL
-					if (webdlId) {
-						cinder.log("[Z-Lib] TorBox success. Cleaning up WebDL ID: " + webdlId);
-						cinder.fetchBrowser("https://api.torbox.app/v1/api/webdl?id=" + webdlId, {
-							method: "DELETE",
-							headers: { "Authorization": "Bearer " + tbKey }
-						}).catch(function(){}); // Fire and forget
-					}
-					
-					return { url: finalUrl };
-				}
-			} catch (e) {
-				cinder.warn("[Z-Lib] TorBox failed: " + e.message + ". Falling back to IPFS...");
-			}
-		}
-
-		// 2. IPFS Fallback
-		cinder.log("[Z-Lib] Resolving via IPFS...");
-		var gateway = (await cinder.store.get("ipfs_gateway")) || "gateway.pinata.cloud";
+		// 2. IPFS Links (Most reliable direct download)
 		var cids = [];
 		var copyElements = doc.querySelectorAll("[data-copy]");
 		for (var i = 0; i < copyElements.length; i++) {
@@ -171,15 +133,48 @@ __cinderExport = {
 			if (regexMatch) cids = regexMatch;
 		}
 
+		var ipfsGateways = [
+			"gateway.pinata.cloud",
+			"cloudflare-ipfs.com",
+			"ipfs.io",
+			"dweb.link"
+		];
+		
+		var fallbackUrls = [];
 		if (cids.length > 0) {
 			var selectedCid = cids.find(function(c) { return c.indexOf("Qm") === 0; }) || cids[0];
-			var ipfsUrl = "https://" + gateway + "/ipfs/" + selectedCid + "?filename=" + encodeURIComponent(item.title + "." + item.format);
-			return { url: ipfsUrl };
+			var filename = encodeURIComponent(item.title + "." + item.format);
+			for (var g = 0; g < ipfsGateways.length; g++) {
+				fallbackUrls.push("https://" + ipfsGateways[g] + "/ipfs/" + selectedCid + "?filename=" + filename);
+			}
 		}
 
-		// 3. Mirror Fallback (Likely returns HTML if you see Litera)
-		if (mirrorUrl) return { url: mirrorUrl, headers: headers };
+		var priority = (await cinder.store.get("priority_source")) || "ipfs";
 
-		throw new Error("All download methods (TorBox, IPFS, Mirror) failed.");
+		// 3. Delegate execution cleanly to Cinder's native DownloadManager.
+		// By omitting 'headers', we force DownloadManager to PROBE the urls. 
+		// If mirrorUrl returns HTML (limit reached/Cloudflare), Cinder will automatically reject it and try the IPFS fallbacks.
+		// By providing debridLink, Cinder natively handles TorBox WebDL creation and deletion AFTER download.
+
+		var finalUrls = [];
+		if (priority === "ipfs" && fallbackUrls.length > 0) {
+			finalUrls = fallbackUrls;
+			if (mirrorUrl) finalUrls.push(mirrorUrl + "?slow_download=true"); // append param to force tier 2
+		} else {
+			if (mirrorUrl) finalUrls.push(mirrorUrl);
+			if (fallbackUrls.length > 0) finalUrls = finalUrls.concat(fallbackUrls);
+		}
+
+		if (finalUrls.length === 0) {
+			throw new Error("No guest-accessible download or IPFS CID found on page.");
+		}
+
+		cinder.log("[Z-Lib] Resolved endpoints. Primary: " + finalUrls[0]);
+
+		return { 
+			url: finalUrls[0], 
+			fallbackUrls: finalUrls.slice(1),
+			debridLink: mirrorUrl // Cinder securely maps this to TorBox WebDL if the user has TorBox enabled
+		};
 	}
 };
