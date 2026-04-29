@@ -1,18 +1,21 @@
-// ─── Z-Library Direct Download Extension v2.0.0 ──────────────────
+// ─── Z-Library Direct Download Extension v2.1.0 ──────────────────
 //
-// Uses Z-Library for search (excellent catalog) and LibGen as the
-// download backend. Z-Library blocks guest downloads with Cloudflare
-// and daily limits, returning HTML pages instead of files. LibGen
-// mirrors the same content without these restrictions.
+// Native Z-Library extension. Uses cinder.fetchBrowser (real WebView)
+// to load Z-Library pages, which passes Cloudflare challenges and 
+// establishes shared cookies. Since WebView has sharedCookiesEnabled,
+// the native downloader automatically inherits those cookies when
+// fetching the /dl/ link from the same domain.
 //
-// Flow: Z-Lib Search → Z-Lib Detail → LibGen lookup by title → Download
+// KEY INSIGHT: The WebView's cookies are shared with the native HTTP
+// layer. By browsing Z-Library in the WebView first, we establish the
+// session cookies needed for the download to succeed.
 
 __cinderExport = {
 	id: "zlibrary-direct",
 	name: "Z-Library (Direct)",
-	version: "2.0.0",
+	version: "2.1.0",
 	icon: "📖",
-	description: "Z-Library search with LibGen download backend. No account required.",
+	description: "Native Z-Library downloader. Uses WebView session for Cloudflare bypass.",
 	contentType: "books",
 
 	capabilities: {
@@ -27,15 +30,15 @@ __cinderExport = {
 	getSettings: function() {
 		return [
 			{
-				id: "libgen_domain",
-				label: "LibGen Mirror",
+				id: "preferred_domain",
+				label: "Preferred Domain",
 				type: "select",
-				defaultValue: "libgen.li",
+				defaultValue: "zlib.li",
 				options: [
-					{ label: "libgen.li (Primary)", value: "libgen.li" },
-					{ label: "libgen.rs", value: "libgen.rs" },
-					{ label: "libgen.is", value: "libgen.is" },
-					{ label: "libgen.st", value: "libgen.st" }
+					{ label: "zlib.li", value: "zlib.li" },
+					{ label: "z-lib.gs", value: "z-lib.gs" },
+					{ label: "z-library.rs", value: "z-library.rs" },
+					{ label: "singlelogin.re", value: "singlelogin.re" }
 				],
 			}
 		];
@@ -43,40 +46,35 @@ __cinderExport = {
 
 	// ── Internals ──
 
-	_ZLIB_DOMAINS: ["zlib.li", "z-lib.gs", "z-library.rs", "singlelogin.re"],
+	_DOMAINS: ["zlib.li", "z-lib.gs", "z-library.rs", "singlelogin.re"],
 
-	_getHeaders: function() {
-		return {
-			"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-			"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-			"Accept-Language": "en-US,en;q=0.9"
-		};
-	},
-
+	// Use fetchBrowser (WebView) for ALL Z-Library requests.
+	// This ensures Cloudflare is bypassed and session cookies are established
+	// in the shared cookie jar before we attempt to download.
 	_fetchZlib: async function(path) {
-		var headers = this._getHeaders();
-		for (var i = 0; i < this._ZLIB_DOMAINS.length; i++) {
-			var url = "https://" + this._ZLIB_DOMAINS[i] + path;
+		var pref = await cinder.store.get("preferred_domain");
+		var domains = this._DOMAINS.slice();
+		if (pref) {
+			domains = domains.filter(function(d) { return d !== pref; });
+			domains.unshift(pref);
+		}
+		for (var i = 0; i < domains.length; i++) {
+			var url = "https://" + domains[i] + path;
 			try {
-				var resp = await cinder.fetchBrowser(url, { headers: headers });
+				// fetchBrowser = real WebView with JS execution + Cloudflare bypass
+				// This also sets sharedCookies that expo-file-system will use
+				var resp = await cinder.fetchBrowser(url);
 				if (resp.status === 200 && resp.data && resp.data.length > 500) {
-					return { data: resp.data, baseUrl: "https://" + this._ZLIB_DOMAINS[i] };
+					return { data: resp.data, baseUrl: "https://" + domains[i], domain: domains[i] };
 				}
-			} catch (err) {}
+			} catch (err) {
+				cinder.warn("[Z-Lib] Mirror " + domains[i] + " failed: " + err);
+			}
 		}
 		throw new Error("Z-Library mirrors are currently unreachable.");
 	},
 
-	_fetchLibgen: async function(path, domain) {
-		var headers = this._getHeaders();
-		var url = "https://" + domain + path;
-		cinder.log("[Z-Lib] Fetching LibGen: " + url);
-		var resp = await cinder.fetchBrowser(url, { headers: headers });
-		if (resp.status === 200 && resp.data) return resp.data;
-		throw new Error("LibGen request failed: HTTP " + resp.status);
-	},
-
-	// ── Search (Z-Library) ──
+	// ── Search ──
 
 	search: async function(query, page) {
 		if (!page) page = 0;
@@ -109,113 +107,121 @@ __cinderExport = {
 		return results;
 	},
 
-	// ── Resolve (LibGen Backend) ──
+	// ── Resolve ──
 
 	resolve: async function(item) {
-		cinder.log("[Z-Lib] Resolving: " + item.title + " by " + item.author);
+		cinder.log("[Z-Lib] Resolving: " + item.title);
 
-		var domain = (await cinder.store.get("libgen_domain")) || "libgen.li";
-		var format = item.format || "epub";
+		// Step 1: Load the book detail page via WebView (fetchBrowser).
+		// This is CRITICAL - the WebView will:
+		//   a) Execute Cloudflare challenge JavaScript
+		//   b) Store the resulting cookies in the shared cookie jar
+		//   c) Return the fully rendered HTML with the download link
+		cinder.log("[Z-Lib] Loading detail page via WebView: " + item.url);
+		var resp = await cinder.fetchBrowser(item.url);
+		if (!resp.data || resp.data.length < 500) {
+			throw new Error("Failed to load book page.");
+		}
 
-		// Step 1: Search LibGen for the same book
-		var searchQuery = encodeURIComponent(item.title + " " + (item.author || ""));
-		var searchPath = "/index.php?req=" + searchQuery + "&res=25&columns[]=t&columns[]=a&columns[]=e";
+		var html = resp.data;
+		var doc = cinder.parseHTML(html);
+		var domain = item.url.match(/^https?:\/\/([^\/]+)/)[0];
+
+		// Step 2: Extract the download link (the addDownloadedBook class or /dl/ path)
+		var dlLink = null;
 		
-		var searchHtml;
-		try {
-			searchHtml = await this._fetchLibgen(searchPath, domain);
-		} catch (e) {
-			cinder.warn("[Z-Lib] Primary LibGen mirror failed, trying fallbacks...");
-			var fallbacks = ["libgen.li", "libgen.rs", "libgen.is", "libgen.st"];
-			for (var f = 0; f < fallbacks.length; f++) {
-				if (fallbacks[f] === domain) continue;
-				try {
-					searchHtml = await this._fetchLibgen(searchPath, fallbacks[f]);
-					domain = fallbacks[f];
-					break;
-				} catch (e2) {}
-			}
-			if (!searchHtml) throw new Error("All LibGen mirrors are unreachable.");
+		// Method A: Look for the specific download button
+		var dlEl = doc.querySelector("a.addDownloadedBook");
+		if (dlEl) {
+			dlLink = dlEl.attr("href");
+			cinder.log("[Z-Lib] Found addDownloadedBook link: " + dlLink);
 		}
-
-		// Step 2: Extract MD5 hashes from search results
-		var md5Regex = /md5=([A-Fa-f0-9]{32})/gi;
-		var md5Matches = [];
-		var match;
-		while ((match = md5Regex.exec(searchHtml)) !== null) {
-			if (md5Matches.indexOf(match[1].toLowerCase()) === -1) {
-				md5Matches.push(match[1].toLowerCase());
-			}
-		}
-
-		if (md5Matches.length === 0) {
-			throw new Error("Book not found on LibGen. Try searching with a shorter title.");
-		}
-
-		cinder.log("[Z-Lib] Found " + md5Matches.length + " LibGen results. Using first MD5: " + md5Matches[0]);
-
-		// Step 3: Fetch the ads/download page to get the keyed download URL
-		var md5 = md5Matches[0];
-		var adsPath = "/ads.php?md5=" + md5;
 		
-		var adsHtml;
-		try {
-			adsHtml = await this._fetchLibgen(adsPath, domain);
-		} catch (e) {
-			cinder.warn("[Z-Lib] ads.php failed: " + e.message);
-		}
-
-		var downloadUrls = [];
-
-		if (adsHtml) {
-			// Extract the keyed download link: get.php?md5=...&key=...
-			var keyMatch = adsHtml.match(/get\.php\?md5=[A-Fa-f0-9]{32}&(?:amp;)?key=([A-Z0-9]+)/i);
-			if (keyMatch) {
-				var keyedUrl = "https://" + domain + "/get.php?md5=" + md5 + "&key=" + keyMatch[1];
-				cinder.log("[Z-Lib] Found keyed download URL: " + keyedUrl);
-				downloadUrls.push(keyedUrl);
-			}
-		}
-
-		// Step 4: Add fallback download URLs (keyless, may redirect)
-		downloadUrls.push("https://" + domain + "/get.php?md5=" + md5);
-
-		// Step 5: Also add IPFS CIDs from the Z-Library page if available
-		try {
-			var headers = this._getHeaders();
-			var zlibResp = await cinder.fetchBrowser(item.url, { headers: headers });
-			if (zlibResp.data) {
-				var doc = cinder.parseHTML(zlibResp.data);
-				var cids = [];
-				var copyElements = doc.querySelectorAll("[data-copy]");
-				for (var i = 0; i < copyElements.length; i++) {
-					var cid = copyElements[i].attr("data-copy");
-					if (cid && cid.length > 30) {
-						if (cid.indexOf("Qm") === 0) cids.unshift(cid);
-						else if (cid.indexOf("ba") === 0) cids.push(cid);
+		// Method B: Find any /dl/ link
+		if (!dlLink) {
+			var allLinks = doc.querySelectorAll("a[href]");
+			for (var i = 0; i < allLinks.length; i++) {
+				var href = allLinks[i].attr("href");
+				if (href && href.indexOf("/dl/") !== -1) {
+					// Skip reader links
+					var cls = allLinks[i].attr("class") || "";
+					if (cls.indexOf("reader") === -1) {
+						dlLink = href;
+						cinder.log("[Z-Lib] Found /dl/ link: " + dlLink);
+						break;
 					}
 				}
-				if (cids.length > 0) {
-					var selectedCid = cids.find(function(c) { return c.indexOf("Qm") === 0; }) || cids[0];
-					var filename = encodeURIComponent(item.title + "." + format);
-					downloadUrls.push("https://gateway.pinata.cloud/ipfs/" + selectedCid + "?filename=" + filename);
-					downloadUrls.push("https://cloudflare-ipfs.com/ipfs/" + selectedCid + "?filename=" + filename);
-					downloadUrls.push("https://ipfs.io/ipfs/" + selectedCid + "?filename=" + filename);
-				}
 			}
-		} catch (e) {
-			cinder.warn("[Z-Lib] IPFS extraction skipped: " + e.message);
 		}
 
-		cinder.log("[Z-Lib] Resolved " + downloadUrls.length + " download URLs. Primary: " + downloadUrls[0]);
+		// Method C: Regex fallback on raw HTML
+		if (!dlLink) {
+			var dlMatch = html.match(/href=["'](\/dl\/[A-Za-z0-9]+)["']/);
+			if (dlMatch) {
+				dlLink = dlMatch[1];
+				cinder.log("[Z-Lib] Found /dl/ link via regex: " + dlLink);
+			}
+		}
 
-		// Return URLs without custom headers so Cinder's DownloadManager 
-		// will probe them and reject any HTML responses automatically.
-		// Also provide debridLink so TorBox users get accelerated downloads.
+		if (!dlLink) {
+			throw new Error("No download link found on the book page.");
+		}
+
+		// Make it absolute
+		if (dlLink.indexOf("/") === 0) {
+			dlLink = domain + dlLink;
+		}
+
+		// Step 3: IMPORTANT - Load the download link in the WebView too!
+		// This ensures the Cloudflare challenge on the /dl/ endpoint is also
+		// passed, and the final redirect URL (the actual file) is captured.
+		// The WebView will follow redirects and the cookies from Step 1 carry over.
+		cinder.log("[Z-Lib] Pre-loading download link via WebView to pass Cloudflare: " + dlLink);
+		try {
+			var dlResp = await cinder.fetchBrowser(dlLink);
+			// Check if the response looks like a "limit reached" page
+			if (dlResp.data && dlResp.data.indexOf("Daily limit") !== -1) {
+				cinder.warn("[Z-Lib] Daily limit reached. Trying IPFS fallback...");
+			} else if (dlResp.data && dlResp.data.indexOf("checking your browser") !== -1) {
+				cinder.log("[Z-Lib] Cloudflare challenge detected, cookies should now be set.");
+			}
+		} catch (e) {
+			cinder.warn("[Z-Lib] Pre-load of /dl/ link failed: " + e.message);
+		}
+
+		// Step 4: Extract IPFS CIDs as fallback URLs
+		var fallbackUrls = [];
+		var cids = [];
+		var copyElements = doc.querySelectorAll("[data-copy]");
+		for (var j = 0; j < copyElements.length; j++) {
+			var cid = copyElements[j].attr("data-copy");
+			if (cid && cid.length > 30) {
+				if (cid.indexOf("Qm") === 0) cids.unshift(cid);
+				else if (cid.indexOf("ba") === 0) cids.push(cid);
+			}
+		}
+		if (cids.length === 0) {
+			var regexMatch = html.match(/(?:Qm[1-9A-HJ-NP-Za-km-z]{44}|ba[a-z2-7]{57})/g);
+			if (regexMatch) cids = regexMatch;
+		}
+		if (cids.length > 0) {
+			var selectedCid = cids.find(function(c) { return c.indexOf("Qm") === 0; }) || cids[0];
+			var filename = encodeURIComponent(item.title + "." + item.format);
+			fallbackUrls.push("https://gateway.pinata.cloud/ipfs/" + selectedCid + "?filename=" + filename);
+			fallbackUrls.push("https://cloudflare-ipfs.com/ipfs/" + selectedCid + "?filename=" + filename);
+			fallbackUrls.push("https://ipfs.io/ipfs/" + selectedCid + "?filename=" + filename);
+		}
+
+		cinder.log("[Z-Lib] Returning download URL: " + dlLink + " with " + fallbackUrls.length + " fallbacks");
+
+		// Return WITHOUT custom headers.
+		// The shared cookies from the WebView sessions are already in the
+		// native cookie jar. expo-file-system will automatically send them.
+		// The DownloadManager will probe the URL and reject HTML responses.
 		return {
-			url: downloadUrls[0],
-			fallbackUrls: downloadUrls.slice(1),
-			debridLink: downloadUrls[0]
+			url: dlLink,
+			fallbackUrls: fallbackUrls,
+			debridLink: dlLink  // TorBox users get the proxied path too
 		};
 	}
 };
