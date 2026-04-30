@@ -13,7 +13,7 @@
 __cinderExport = {
 	id: "zlibrary-direct",
 	name: "Z-Library (Direct)",
-	version: "2.1.1",
+	version: "2.1.2",
 	icon: "📖",
 	description: "Native Z-Library downloader. Uses WebView session for Cloudflare bypass.",
 	contentType: "books",
@@ -218,19 +218,29 @@ __cinderExport = {
 			};
 		}
 
-		cinder.log("[Z-Lib] Returning download URL: " + dlLink + " with " + fallbackUrls.length + " fallbacks");
+		// The Z-Library /dl/ link is behind Cloudflare's TLS fingerprinting.
+		// The native HTTP client (expo-file-system) has a different TLS 
+		// fingerprint than Safari, so Cloudflare will ALWAYS return 503 
+		// regardless of cookies or User-Agent. Only IPFS links can work.
+		//
+		// Strategy: Put IPFS links first (they bypass Cloudflare entirely).
+		// The mirror link goes last as an absolute last resort.
+		// NO debridLink — TorBox doesn't support Z-Library as a hoster.
+		// NO custom headers — let DownloadManager probe and reject 503/HTML.
 
-		// CRITICAL: Send the EXACT same User-Agent the WebView uses.
-		// Cloudflare validates that the User-Agent in the download request
-		// matches the one that solved the challenge. The WebView uses the
-		// iOS Safari UA defined in WebViewScraper.tsx line 392.
-		var webViewUA = "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1";
-		
+		var allUrls = [];
+		if (fallbackUrls.length > 0) {
+			// IPFS first (no Cloudflare)
+			allUrls = fallbackUrls.slice();
+		}
+		// Mirror as absolute last resort (will likely fail with 503)
+		allUrls.push(dlLink);
+
+		cinder.log("[Z-Lib] Returning " + allUrls.length + " download URLs. Primary: " + allUrls[0]);
+
 		return {
-			url: dlLink,
-			fallbackUrls: fallbackUrls,
-			headers: { "User-Agent": webViewUA },
-			debridLink: dlLink
+			url: allUrls[0],
+			fallbackUrls: allUrls.slice(1)
 		};
 	}
 };
