@@ -13,7 +13,7 @@
 __cinderExport = {
 	id: "zlibrary-direct",
 	name: "Z-Library (Direct)",
-	version: "2.2.0",
+	version: "2.2.1",
 	icon: "📖",
 	description: "Native Z-Library downloader. Uses WebView session for Cloudflare bypass.",
 	contentType: "books",
@@ -179,43 +179,51 @@ __cinderExport = {
 			cinder.warn("[Z-Lib] Daily download limit reached!");
 		}
 
-		// Step 3: Download the file through the WebView's browser engine.
-		// The WebView has Safari's TLS fingerprint which passes Cloudflare.
-		// cinder.fetchBrowserBinary() loads the URL in the WebView, uses
-		// fetch() inside the browser context to download as blob, converts
-		// to base64 via FileReader, and bridges it back via postMessage.
+		// The WebView navigates to /dl/, follows JS redirects, and either:
+		// - Returns a CDN URL (prefixed with "URL:") that the native downloader can fetch
+		// - Returns base64 binary data of the file
+		// - Returns an error (daily limit, etc.)
 		if (!dailyLimitHit) {
-			cinder.log("[Z-Lib] Downloading file via WebView binary fetch: " + dlLink);
+			cinder.log("[Z-Lib] Downloading file via WebView: " + dlLink);
 			try {
 				var binResp = await cinder.fetchBrowserBinary(dlLink);
-				if (binResp.status === 200 && binResp.data && binResp.data.length > 100) {
-					// Validate it's not HTML — check first few base64-decoded bytes
-					// Base64 of "<" is "PA", of "PK" (ZIP/EPUB) is "UE", of "%P" (PDF) is "JV"
-					var prefix = binResp.data.substring(0, 4);
-					if (prefix === "UEsD" || prefix === "UEsF") {
-						// It's a ZIP/EPUB file! Return as data URI for DownloadManager
-						cinder.log("[Z-Lib] SUCCESS: Got valid EPUB via WebView (" + Math.round(binResp.data.length * 3/4/1024) + " KB)");
-						var dataUri = "data:application/epub+zip;base64," + binResp.data;
+				if (binResp.status === 200 && binResp.data) {
+					// Check if it's a CDN URL (the WebView captured the redirect destination)
+					if (typeof binResp.data === "string" && binResp.data.indexOf("URL:") === 0) {
+						var cdnUrl = binResp.data.substring(4);
+						cinder.log("[Z-Lib] SUCCESS: Got CDN download URL: " + cdnUrl);
 						return {
-							url: dataUri,
+							url: cdnUrl,
 							fileName: item.title + "." + (item.format || "epub")
 						};
-					} else if (prefix === "JVBE") {
-						// PDF
-						cinder.log("[Z-Lib] SUCCESS: Got valid PDF via WebView (" + Math.round(binResp.data.length * 3/4/1024) + " KB)");
-						var dataUri = "data:application/pdf;base64," + binResp.data;
-						return {
-							url: dataUri,
-							fileName: item.title + ".pdf"
-						};
+					}
+					
+					// Check if it's base64 binary data
+					if (binResp.data.length > 100) {
+						var prefix = binResp.data.substring(0, 4);
+						if (prefix === "UEsD" || prefix === "UEsF") {
+							cinder.log("[Z-Lib] SUCCESS: Got EPUB via WebView (" + Math.round(binResp.data.length * 3/4/1024) + " KB)");
+							return {
+								url: "data:application/epub+zip;base64," + binResp.data,
+								fileName: item.title + "." + (item.format || "epub")
+							};
+						} else if (prefix === "JVBE") {
+							cinder.log("[Z-Lib] SUCCESS: Got PDF via WebView (" + Math.round(binResp.data.length * 3/4/1024) + " KB)");
+							return {
+								url: "data:application/pdf;base64," + binResp.data,
+								fileName: item.title + ".pdf"
+							};
+						} else {
+							cinder.warn("[Z-Lib] WebView returned non-ebook data (prefix: " + prefix + "). Trying IPFS...");
+						}
 					} else {
-						cinder.warn("[Z-Lib] WebView returned non-ebook data (prefix: " + prefix + "). Trying IPFS...");
+						cinder.warn("[Z-Lib] WebView response too short (" + (binResp.data || "").length + " bytes). Trying IPFS...");
 					}
 				} else {
-					cinder.warn("[Z-Lib] WebView binary fetch returned empty/failed. Trying IPFS...");
+					cinder.warn("[Z-Lib] WebView binary fetch failed. Trying IPFS...");
 				}
 			} catch (e) {
-				cinder.warn("[Z-Lib] WebView binary fetch failed: " + e.message + ". Trying IPFS...");
+				cinder.warn("[Z-Lib] WebView binary fetch error: " + e.message + ". Trying IPFS...");
 			}
 		}
 
