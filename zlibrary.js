@@ -13,7 +13,7 @@
 __cinderExport = {
 	id: "zlibrary-direct",
 	name: "Z-Library (Direct)",
-	version: "2.1.2",
+	version: "2.2.0",
 	icon: "📖",
 	description: "Native Z-Library downloader. Uses WebView session for Cloudflare bypass.",
 	contentType: "books",
@@ -172,16 +172,54 @@ __cinderExport = {
 			dlLink = domain + dlLink;
 		}
 
-		// Note: We do NOT pre-load the /dl/ link in the WebView.
-		// The Cloudflare cookies from loading the detail page (Step 1) are 
-		// sufficient. Loading /dl/ in the WebView would cause it to try to 
-		// "render" a file download as HTML, time out after 15s, and trigger
-		// the interactive security challenge popup.
-		
-		// Check if the detail page itself shows a daily limit warning
+		// Check if the detail page shows a daily limit warning
 		var dailyLimitHit = html.indexOf("Daily limit") !== -1 || html.indexOf("daily limit") !== -1;
 
-		// Step 4: Extract IPFS CIDs as fallback URLs
+		if (dailyLimitHit) {
+			cinder.warn("[Z-Lib] Daily download limit reached!");
+		}
+
+		// Step 3: Download the file through the WebView's browser engine.
+		// The WebView has Safari's TLS fingerprint which passes Cloudflare.
+		// cinder.fetchBrowserBinary() loads the URL in the WebView, uses
+		// fetch() inside the browser context to download as blob, converts
+		// to base64 via FileReader, and bridges it back via postMessage.
+		if (!dailyLimitHit) {
+			cinder.log("[Z-Lib] Downloading file via WebView binary fetch: " + dlLink);
+			try {
+				var binResp = await cinder.fetchBrowserBinary(dlLink);
+				if (binResp.status === 200 && binResp.data && binResp.data.length > 100) {
+					// Validate it's not HTML — check first few base64-decoded bytes
+					// Base64 of "<" is "PA", of "PK" (ZIP/EPUB) is "UE", of "%P" (PDF) is "JV"
+					var prefix = binResp.data.substring(0, 4);
+					if (prefix === "UEsD" || prefix === "UEsF") {
+						// It's a ZIP/EPUB file! Return as data URI for DownloadManager
+						cinder.log("[Z-Lib] SUCCESS: Got valid EPUB via WebView (" + Math.round(binResp.data.length * 3/4/1024) + " KB)");
+						var dataUri = "data:application/epub+zip;base64," + binResp.data;
+						return {
+							url: dataUri,
+							fileName: item.title + "." + (item.format || "epub")
+						};
+					} else if (prefix === "JVBE") {
+						// PDF
+						cinder.log("[Z-Lib] SUCCESS: Got valid PDF via WebView (" + Math.round(binResp.data.length * 3/4/1024) + " KB)");
+						var dataUri = "data:application/pdf;base64," + binResp.data;
+						return {
+							url: dataUri,
+							fileName: item.title + ".pdf"
+						};
+					} else {
+						cinder.warn("[Z-Lib] WebView returned non-ebook data (prefix: " + prefix + "). Trying IPFS...");
+					}
+				} else {
+					cinder.warn("[Z-Lib] WebView binary fetch returned empty/failed. Trying IPFS...");
+				}
+			} catch (e) {
+				cinder.warn("[Z-Lib] WebView binary fetch failed: " + e.message + ". Trying IPFS...");
+			}
+		}
+
+		// Step 4: IPFS fallback
 		var fallbackUrls = [];
 		var cids = [];
 		var copyElements = doc.querySelectorAll("[data-copy]");
@@ -204,43 +242,17 @@ __cinderExport = {
 			fallbackUrls.push("https://ipfs.io/ipfs/" + selectedCid + "?filename=" + filename);
 		}
 
-		// If daily limit was hit and no IPFS fallbacks, throw clear error
-		if (dailyLimitHit && fallbackUrls.length === 0) {
-			throw new Error("Z-Library daily download limit reached. Try again in 24 hours or use a VPN.");
+		if (fallbackUrls.length === 0) {
+			if (dailyLimitHit) {
+				throw new Error("Z-Library daily download limit reached and no IPFS fallback available. Try again later or use a VPN.");
+			}
+			throw new Error("Download failed. The file could not be fetched from Z-Library or IPFS.");
 		}
 
-		// If daily limit was hit, skip the mirror and use IPFS only
-		if (dailyLimitHit && fallbackUrls.length > 0) {
-			cinder.log("[Z-Lib] Daily limit hit. Using IPFS fallbacks only.");
-			return {
-				url: fallbackUrls[0],
-				fallbackUrls: fallbackUrls.slice(1)
-			};
-		}
-
-		// The Z-Library /dl/ link is behind Cloudflare's TLS fingerprinting.
-		// The native HTTP client (expo-file-system) has a different TLS 
-		// fingerprint than Safari, so Cloudflare will ALWAYS return 503 
-		// regardless of cookies or User-Agent. Only IPFS links can work.
-		//
-		// Strategy: Put IPFS links first (they bypass Cloudflare entirely).
-		// The mirror link goes last as an absolute last resort.
-		// NO debridLink — TorBox doesn't support Z-Library as a hoster.
-		// NO custom headers — let DownloadManager probe and reject 503/HTML.
-
-		var allUrls = [];
-		if (fallbackUrls.length > 0) {
-			// IPFS first (no Cloudflare)
-			allUrls = fallbackUrls.slice();
-		}
-		// Mirror as absolute last resort (will likely fail with 503)
-		allUrls.push(dlLink);
-
-		cinder.log("[Z-Lib] Returning " + allUrls.length + " download URLs. Primary: " + allUrls[0]);
-
+		cinder.log("[Z-Lib] Using IPFS fallback. " + fallbackUrls.length + " URLs available.");
 		return {
-			url: allUrls[0],
-			fallbackUrls: allUrls.slice(1)
+			url: fallbackUrls[0],
+			fallbackUrls: fallbackUrls.slice(1)
 		};
 	}
 };
