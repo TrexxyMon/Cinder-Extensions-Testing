@@ -13,7 +13,7 @@
 __cinderExport = {
 	id: "zlibrary-direct",
 	name: "Z-Library (Direct)",
-	version: "2.1.0",
+	version: "2.1.1",
 	icon: "📖",
 	description: "Native Z-Library downloader. Uses WebView session for Cloudflare bypass.",
 	contentType: "books",
@@ -172,22 +172,14 @@ __cinderExport = {
 			dlLink = domain + dlLink;
 		}
 
-		// Step 3: IMPORTANT - Load the download link in the WebView too!
-		// This ensures the Cloudflare challenge on the /dl/ endpoint is also
-		// passed, and the final redirect URL (the actual file) is captured.
-		// The WebView will follow redirects and the cookies from Step 1 carry over.
-		cinder.log("[Z-Lib] Pre-loading download link via WebView to pass Cloudflare: " + dlLink);
-		try {
-			var dlResp = await cinder.fetchBrowser(dlLink);
-			// Check if the response looks like a "limit reached" page
-			if (dlResp.data && dlResp.data.indexOf("Daily limit") !== -1) {
-				cinder.warn("[Z-Lib] Daily limit reached. Trying IPFS fallback...");
-			} else if (dlResp.data && dlResp.data.indexOf("checking your browser") !== -1) {
-				cinder.log("[Z-Lib] Cloudflare challenge detected, cookies should now be set.");
-			}
-		} catch (e) {
-			cinder.warn("[Z-Lib] Pre-load of /dl/ link failed: " + e.message);
-		}
+		// Note: We do NOT pre-load the /dl/ link in the WebView.
+		// The Cloudflare cookies from loading the detail page (Step 1) are 
+		// sufficient. Loading /dl/ in the WebView would cause it to try to 
+		// "render" a file download as HTML, time out after 15s, and trigger
+		// the interactive security challenge popup.
+		
+		// Check if the detail page itself shows a daily limit warning
+		var dailyLimitHit = html.indexOf("Daily limit") !== -1 || html.indexOf("daily limit") !== -1;
 
 		// Step 4: Extract IPFS CIDs as fallback URLs
 		var fallbackUrls = [];
@@ -212,16 +204,33 @@ __cinderExport = {
 			fallbackUrls.push("https://ipfs.io/ipfs/" + selectedCid + "?filename=" + filename);
 		}
 
+		// If daily limit was hit and no IPFS fallbacks, throw clear error
+		if (dailyLimitHit && fallbackUrls.length === 0) {
+			throw new Error("Z-Library daily download limit reached. Try again in 24 hours or use a VPN.");
+		}
+
+		// If daily limit was hit, skip the mirror and use IPFS only
+		if (dailyLimitHit && fallbackUrls.length > 0) {
+			cinder.log("[Z-Lib] Daily limit hit. Using IPFS fallbacks only.");
+			return {
+				url: fallbackUrls[0],
+				fallbackUrls: fallbackUrls.slice(1)
+			};
+		}
+
 		cinder.log("[Z-Lib] Returning download URL: " + dlLink + " with " + fallbackUrls.length + " fallbacks");
 
-		// Return WITHOUT custom headers.
-		// The shared cookies from the WebView sessions are already in the
-		// native cookie jar. expo-file-system will automatically send them.
-		// The DownloadManager will probe the URL and reject HTML responses.
+		// CRITICAL: Send the EXACT same User-Agent the WebView uses.
+		// Cloudflare validates that the User-Agent in the download request
+		// matches the one that solved the challenge. The WebView uses the
+		// iOS Safari UA defined in WebViewScraper.tsx line 392.
+		var webViewUA = "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1";
+		
 		return {
 			url: dlLink,
 			fallbackUrls: fallbackUrls,
-			debridLink: dlLink  // TorBox users get the proxied path too
+			headers: { "User-Agent": webViewUA },
+			debridLink: dlLink
 		};
 	}
 };
