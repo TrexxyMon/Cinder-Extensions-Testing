@@ -24,8 +24,8 @@
                        {
                            "id":  "gocomics",
                            "name":  "GoComics",
-                           "version":  "1.1.1-cinderfix",
-                           "description":  "Read daily comic strips from GoComics.com. Patched for Cinder settings, better chapter dates, and browser fallback page fetches.",
+                           "version":  "1.1.2-cinderfix",
+                           "description":  "Read daily comic strips from GoComics.com. Patched for Cinder settings, better chapter dates, browser fallback page fetches, and lighter image URLs.",
                            "contentType":  "manga",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/gocomics.js",
                            "minCinderVersion":  "2.0.0"

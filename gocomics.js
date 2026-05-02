@@ -283,6 +283,22 @@ GoComics._extractLatestPublishedDate = function(html) {
   return latest;
 };
 
+GoComics._optimizeImageUrl = function(url, width) {
+  if (!url) return "";
+  if (url.indexOf("featureassets.gocomics.com") === -1) return url;
+  var targetWidth = width || 1200;
+  if (url.indexOf("?") === -1) {
+    return url + "?optimizer=image&width=" + targetWidth + "&quality=85";
+  }
+  if (url.indexOf("width=") >= 0) {
+    return url.replace(/width=\d+/i, "width=" + targetWidth);
+  }
+  if (url.indexOf("optimizer=image") >= 0) {
+    return url + "&width=" + targetWidth + "&quality=85";
+  }
+  return url;
+};
+
 GoComics.search = async function(query, page) {
   var q = (query || "").toLowerCase().trim();
   var filtered = this.COMICS.filter(function(c) {
@@ -344,10 +360,10 @@ GoComics.getMangaDetails = async function(slug) {
     if (ogDesc) description = this._decode(ogDesc);
 
     var ogImage = this._match(html, 'og:image"\\s+content="([^"]+)"', "i");
-    if (ogImage) cover = ogImage;
+    if (ogImage) cover = this._optimizeImageUrl(ogImage, 512);
 
     var stripImage = this._extractImageUrl(html);
-    if (stripImage) cover = stripImage;
+    if (stripImage) cover = this._optimizeImageUrl(stripImage, 512);
 
     var ldAuthor = this._match(html, '"author"\\s*:\\s*\\{[^}]*"name"\\s*:\\s*"([^"]+)"', "i");
     if (ldAuthor) author = this._decode(ldAuthor);
@@ -457,7 +473,7 @@ GoComics.getPages = async function(chapterId) {
     throw new Error("No strip image found for " + slug + " on " + dateStr);
   }
 
-  return [{ url: imageUrl, headers: headers }];
+  return [{ url: this._optimizeImageUrl(imageUrl, 1400), headers: headers }];
 };
 
 GoComics.getSettings = function() {
@@ -483,10 +499,12 @@ GoComics.getSettings = function() {
           { label: "7 days", value: "7" },
           { label: "14 days", value: "14" },
           { label: "30 days", value: "30" },
+          { label: "60 days", value: "60" },
           { label: "90 days", value: "90" },
+          { label: "180 days", value: "180" },
           { label: "365 days", value: "365" }
-      ]
-    }
+        ]
+      }
   ];
 };
 
