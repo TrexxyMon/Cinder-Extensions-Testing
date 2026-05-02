@@ -2,7 +2,7 @@ var GoComics = {};
 
 GoComics.id = "gocomics";
 GoComics.name = "GoComics";
-GoComics.version = "1.2.0-cinderfix";
+GoComics.version = "1.2.1-cinderfix";
 GoComics.icon = "GC";
 GoComics.description =
   "Read daily comic strips from GoComics.com - patched for Cinder.";
@@ -287,12 +287,38 @@ GoComics._monthKey = function(date) {
   return date.getFullYear() + "/" + String(date.getMonth() + 1).padStart(2, "0");
 };
 
+GoComics._parseCalendarDate = function(dateStr) {
+  if (!dateStr) return null;
+  var normalized = dateStr.replace(/\//g, "-");
+  var parsed = new Date(normalized + "T00:00:00");
+  return isNaN(parsed.getTime()) ? null : parsed;
+};
+
+GoComics._buildMonthKeys = function(daysBack, today) {
+  var keys = [];
+  var seen = {};
+  var monthCount = Math.max(2, Math.ceil(daysBack / 26) + 1);
+  var cursor = new Date(today.getFullYear(), today.getMonth(), 1);
+  var i;
+
+  for (i = 0; i < monthCount; i++) {
+    var key = this._monthKey(cursor);
+    if (!seen[key]) {
+      seen[key] = true;
+      keys.push(key);
+    }
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1);
+  }
+
+  return keys;
+};
+
 GoComics._fetchMonthCalendar = async function(slug, monthKey) {
   var headers = await this._headers();
   var url = this.BASE_URL + "/calendar/" + slug + "/" + monthKey;
   var res = await cinder.fetch(url, {
     headers: headers,
-    timeout: 8000
+    timeout: 3000
   });
   if (!res || res.status !== 200 || !res.data) {
     throw new Error("Calendar request failed for " + monthKey);
@@ -404,11 +430,13 @@ GoComics.getMangaDetails = async function(slug) {
 GoComics.getChapters = async function(slug) {
   var daysBack = await this._getDaysBack();
   var cacheKey = "calendar_cache_" + slug + "_" + daysBack;
+  var staleChapters = [];
   try {
     var cached = await cinder.store.get(cacheKey);
     if (cached) {
       var cachedObj = JSON.parse(cached);
-      if (cachedObj && cachedObj.fetchedAt && Array.isArray(cachedObj.chapters)) {
+      if (cachedObj && Array.isArray(cachedObj.chapters)) {
+        staleChapters = cachedObj.chapters;
         if (Date.now() - cachedObj.fetchedAt < 12 * 60 * 60 * 1000) {
           return cachedObj.chapters;
         }
@@ -416,77 +444,56 @@ GoComics.getChapters = async function(slug) {
     }
   } catch (e) {}
 
-  var latestAvailable = null;
-  var headers = await this._headers();
-  var landing = await cinder.fetch(this.BASE_URL + "/" + slug, { headers: headers });
-  if (landing && landing.status === 200 && landing.data) {
-    latestAvailable = this._extractLatestPublishedDate(landing.data);
-  }
-  if (!latestAvailable) {
-    try {
-      var browserLanding = await cinder.fetchBrowser(this.BASE_URL + "/" + slug);
-      latestAvailable = this._extractLatestPublishedDate(browserLanding.data || "");
-    } catch (e) {}
-  }
-  var today = latestAvailable || new Date();
+  var today = new Date();
   var seen = {};
   var allDates = [];
-  var cursor = new Date(today.getFullYear(), today.getMonth(), 1);
-  var monthAttempts = Math.max(2, Math.ceil(daysBack / 26) + 2);
-  var m;
+  var monthKeys = this._buildMonthKeys(daysBack, today);
+  var self = this;
+  var monthResults = await Promise.all(
+    monthKeys.map(function(monthKey) {
+      return self._fetchMonthCalendar(slug, monthKey)
+        .then(function(monthDates) {
+          return { monthKey: monthKey, dates: monthDates || [] };
+        })
+        .catch(function(e) {
+          cinder.warn("Calendar fetch failed for " + slug + " month " + monthKey + ": " + e);
+          return { monthKey: monthKey, dates: [] };
+        });
+    })
+  );
 
-  for (m = 0; m < monthAttempts && allDates.length < daysBack; m++) {
-    var monthKey = this._monthKey(cursor);
-    try {
-      var monthDates = await this._fetchMonthCalendar(slug, monthKey);
-      var j;
-      for (j = 0; j < monthDates.length; j++) {
-        var dateStr = monthDates[j];
-        if (!dateStr || seen[dateStr]) continue;
-        seen[dateStr] = true;
-        var parsed = new Date(dateStr.replace(/\//g, "-") + "T00:00:00");
-        if (!isNaN(parsed.getTime()) && parsed.getTime() <= today.getTime()) {
-          allDates.push(dateStr);
-        }
-      }
-    } catch (e) {
-      cinder.warn("Calendar fetch failed for " + slug + " month " + monthKey + ": " + e);
+  var m;
+  for (m = 0; m < monthResults.length; m++) {
+    var monthDates = monthResults[m].dates || [];
+    var j;
+    for (j = 0; j < monthDates.length; j++) {
+      var dateStr = monthDates[j];
+      if (!dateStr || seen[dateStr]) continue;
+      var parsed = this._parseCalendarDate(dateStr);
+      if (!parsed || parsed.getTime() > today.getTime()) continue;
+      seen[dateStr] = true;
+      allDates.push(dateStr);
     }
-    cursor = new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1);
   }
 
   allDates.sort(function(a, b) {
-    return new Date(b.replace(/\//g, "-")).getTime() - new Date(a.replace(/\//g, "-")).getTime();
+    var parsedB = GoComics._parseCalendarDate(b);
+    var parsedA = GoComics._parseCalendarDate(a);
+    return (parsedB ? parsedB.getTime() : 0) - (parsedA ? parsedA.getTime() : 0);
   });
 
   var dates = allDates.slice(0, daysBack);
   if (dates.length === 0) {
-    cinder.warn("Calendar lookup returned no dates for " + slug + ", falling back to guessed recent days.");
-    var fallback = [];
-    var i;
-    for (i = 0; i < daysBack; i++) {
-      var d = new Date(today);
-      d.setDate(today.getDate() - i);
-      var year = d.getFullYear();
-      var month = String(d.getMonth() + 1).padStart(2, "0");
-      var day = String(d.getDate()).padStart(2, "0");
-      var fallbackDate = year + "/" + month + "/" + day;
-      fallback.push({
-        id: slug + "|" + fallbackDate,
-        title: d.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric"
-        }),
-        chapterNumber: daysBack - i,
-        dateUploaded: d.toISOString().split("T")[0]
-      });
+    if (staleChapters.length > 0) {
+      cinder.warn("Calendar lookup returned no fresh dates for " + slug + ", using cached chapter list.");
+      return staleChapters;
     }
-    return fallback;
+    cinder.warn("Calendar lookup returned no dates for " + slug + ".");
+    return [];
   }
 
   var chapters = dates.map(function(dateStr, idx) {
-    var parsed = new Date(dateStr.replace(/\//g, "-") + "T00:00:00");
+    var parsed = GoComics._parseCalendarDate(dateStr);
     return {
       id: slug + "|" + dateStr,
       title: parsed.toLocaleDateString("en-US", {
