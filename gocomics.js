@@ -2,7 +2,7 @@ var GoComics = {};
 
 GoComics.id = "gocomics";
 GoComics.name = "GoComics";
-GoComics.version = "1.1.0-cinderfix";
+GoComics.version = "1.1.1-cinderfix";
 GoComics.icon = "GC";
 GoComics.description =
   "Read daily comic strips from GoComics.com - patched for Cinder.";
@@ -265,10 +265,22 @@ GoComics._comicToResult = function(c) {
   return {
     id: c.id,
     title: c.title,
-    cover: "https://avatar.gocomics.com/" + c.id + "/avatar_256.jpg",
     url: this.BASE_URL + "/" + c.id,
     format: "manga"
   };
+};
+
+GoComics._extractLatestPublishedDate = function(html) {
+  var re = /"datePublished"\s*:\s*"([A-Za-z]+ \d{1,2}, \d{4})"/g;
+  var match;
+  var latest = null;
+  while ((match = re.exec(html || "")) !== null) {
+    var parsed = new Date(match[1]);
+    if (!isNaN(parsed.getTime()) && (!latest || parsed.getTime() > latest.getTime())) {
+      latest = parsed;
+    }
+  }
+  return latest;
 };
 
 GoComics.search = async function(query, page) {
@@ -334,6 +346,9 @@ GoComics.getMangaDetails = async function(slug) {
     var ogImage = this._match(html, 'og:image"\\s+content="([^"]+)"', "i");
     if (ogImage) cover = ogImage;
 
+    var stripImage = this._extractImageUrl(html);
+    if (stripImage) cover = stripImage;
+
     var ldAuthor = this._match(html, '"author"\\s*:\\s*\\{[^}]*"name"\\s*:\\s*"([^"]+)"', "i");
     if (ldAuthor) author = this._decode(ldAuthor);
   }
@@ -352,7 +367,19 @@ GoComics.getMangaDetails = async function(slug) {
 GoComics.getChapters = async function(slug) {
   var daysBack = await this._getDaysBack();
   var chapters = [];
-  var today = new Date();
+  var latestAvailable = null;
+  var headers = await this._headers();
+  var landing = await cinder.fetch(this.BASE_URL + "/" + slug, { headers: headers });
+  if (landing && landing.status === 200 && landing.data) {
+    latestAvailable = this._extractLatestPublishedDate(landing.data);
+  }
+  if (!latestAvailable) {
+    try {
+      var browserLanding = await cinder.fetchBrowser(this.BASE_URL + "/" + slug);
+      latestAvailable = this._extractLatestPublishedDate(browserLanding.data || "");
+    } catch (e) {}
+  }
+  var today = latestAvailable || new Date();
   var i;
 
   for (i = 0; i < daysBack; i++) {
@@ -404,11 +431,11 @@ GoComics.getPages = async function(chapterId) {
   var url = this.BASE_URL + "/" + slug + "/" + dateStr;
   var headers = await this._headers();
 
-  var res = await cinder.fetchBrowser(url);
+  var res = await cinder.fetch(url, { headers: headers });
   var html = (res && res.data) || "";
 
-  if (!html || html.indexOf("Establishing a secure connection") >= 0) {
-    res = await cinder.fetch(url, { headers: headers });
+  if (!html || html.indexOf("Establishing a secure connection") >= 0 || html.indexOf("featureassets.gocomics.com") === -1) {
+    res = await cinder.fetchBrowser(url);
     html = (res && res.data) || "";
   }
 
@@ -418,6 +445,10 @@ GoComics.getPages = async function(chapterId) {
 
   if (html.indexOf("Establishing a secure connection") >= 0) {
     throw new Error("GoComics returned a security challenge instead of the comic page.");
+  }
+
+  if (html.indexOf("This page could not be found") >= 0 || html.indexOf(">404<") >= 0) {
+    throw new Error("No strip was published for this date.");
   }
 
   var imageUrl = this._extractImageUrl(html);
@@ -443,16 +474,17 @@ GoComics.getSettings = function() {
       type: "password",
       defaultValue: ""
     },
-    {
-      id: "days_back",
-      label: "Days of History to Load",
-      type: "select",
-      defaultValue: "30",
-      options: [
-        { label: "7 days", value: "7" },
-        { label: "30 days", value: "30" },
-        { label: "90 days", value: "90" },
-        { label: "365 days", value: "365" }
+      {
+        id: "days_back",
+        label: "Days of History to Load",
+        type: "select",
+        defaultValue: "14",
+        options: [
+          { label: "7 days", value: "7" },
+          { label: "14 days", value: "14" },
+          { label: "30 days", value: "30" },
+          { label: "90 days", value: "90" },
+          { label: "365 days", value: "365" }
       ]
     }
   ];
