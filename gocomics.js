@@ -2,7 +2,7 @@ var GoComics = {};
 
 GoComics.id = "gocomics";
 GoComics.name = "GoComics";
-GoComics.version = "1.2.2-cinderfix";
+GoComics.version = "1.2.3-cinderfix";
 GoComics.icon = "GC";
 GoComics.description =
   "Read daily comic strips from GoComics.com - patched for Cinder.";
@@ -283,6 +283,10 @@ GoComics._extractLatestPublishedDate = function(html) {
   return latest;
 };
 
+GoComics._escapeRegExp = function(str) {
+  return (str || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+};
+
 GoComics._monthKey = function(date) {
   return date.getFullYear() + "/" + String(date.getMonth() + 1).padStart(2, "0");
 };
@@ -294,23 +298,94 @@ GoComics._parseCalendarDate = function(dateStr) {
   return isNaN(parsed.getTime()) ? null : parsed;
 };
 
-GoComics._buildMonthKeys = function(daysBack, today) {
-  var keys = [];
-  var seen = {};
-  var monthCount = Math.max(2, Math.ceil(daysBack / 26) + 1);
-  var cursor = new Date(today.getFullYear(), today.getMonth(), 1);
-  var i;
+GoComics._formatDateKey = function(date) {
+  return date.getFullYear() + "/" +
+    String(date.getMonth() + 1).padStart(2, "0") + "/" +
+    String(date.getDate()).padStart(2, "0");
+};
 
-  for (i = 0; i < monthCount; i++) {
-    var key = this._monthKey(cursor);
-    if (!seen[key]) {
-      seen[key] = true;
-      keys.push(key);
-    }
-    cursor = new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1);
+GoComics._extractCurrentPageDate = function(html) {
+  var published = this._extractLatestPublishedDate(html);
+  if (published) return published;
+
+  var titleDate = this._match(html, 'for ([A-Za-z]+ \\d{1,2}, \\d{4}) \\| GoComics', "i");
+  if (titleDate) {
+    var parsedTitleDate = new Date(titleDate);
+    if (!isNaN(parsedTitleDate.getTime())) return parsedTitleDate;
   }
 
-  return keys;
+  return null;
+};
+
+GoComics._extractDateLinksForSlug = function(slug, html) {
+  var escapedSlug = this._escapeRegExp(slug);
+  var re = new RegExp("(?:https?:\\/\\/www\\.gocomics\\.com)?\\/" + escapedSlug + "\\/(\\d{4})\\/(\\d{2})\\/(\\d{2})", "g");
+  var match;
+  var seen = {};
+  var dates = [];
+
+  while ((match = re.exec(html || "")) !== null) {
+    var dateStr = match[1] + "/" + match[2] + "/" + match[3];
+    if (seen[dateStr]) continue;
+    seen[dateStr] = true;
+    var parsed = this._parseCalendarDate(dateStr);
+    if (parsed) dates.push(parsed);
+  }
+
+  return dates;
+};
+
+GoComics._findPreviousDateFromHtml = function(slug, html, currentDate) {
+  var links = this._extractDateLinksForSlug(slug, html);
+  var currentTime = currentDate.getTime();
+  var best = null;
+  var i;
+
+  for (i = 0; i < links.length; i++) {
+    var candidate = links[i];
+    if (candidate.getTime() >= currentTime) continue;
+    if (!best || candidate.getTime() > best.getTime()) {
+      best = candidate;
+    }
+  }
+
+  return best;
+};
+
+GoComics._fetchComicPage = async function(url, headers) {
+  var res = await cinder.fetch(url, {
+    headers: headers,
+    timeout: 3500
+  });
+  var html = (res && res.data) || "";
+
+  if (!html || html.indexOf("Establishing a secure connection") >= 0) {
+    res = await cinder.fetchBrowser(url);
+    html = (res && res.data) || "";
+  }
+
+  return html || "";
+};
+
+GoComics._buildFallbackChapters = function(slug, count, today) {
+  var fallback = [];
+  var i;
+  for (i = 0; i < count; i++) {
+    var d = new Date(today);
+    d.setDate(today.getDate() - i);
+    var fallbackDate = this._formatDateKey(d);
+    fallback.push({
+      id: slug + "|" + fallbackDate,
+      title: d.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric"
+      }),
+      chapterNumber: count - i,
+      dateUploaded: d.toISOString().split("T")[0]
+    });
+  }
+  return fallback;
 };
 
 GoComics._fetchMonthCalendar = async function(slug, monthKey) {
@@ -444,71 +519,59 @@ GoComics.getChapters = async function(slug) {
     }
   } catch (e) {}
 
+  var headers = await this._headers();
   var today = new Date();
-  var seen = {};
-  var allDates = [];
-  var monthKeys = this._buildMonthKeys(daysBack, today);
-  var self = this;
-  var monthResults = await Promise.all(
-    monthKeys.map(function(monthKey) {
-      return self._fetchMonthCalendar(slug, monthKey)
-        .then(function(monthDates) {
-          return { monthKey: monthKey, dates: monthDates || [] };
-        })
-        .catch(function(e) {
-          cinder.warn("Calendar fetch failed for " + slug + " month " + monthKey + ": " + e);
-          return { monthKey: monthKey, dates: [] };
-        });
-    })
-  );
+  var startMs = Date.now();
+  var visited = {};
+  var dates = [];
+  var currentUrl = this.BASE_URL + "/" + slug;
+  var safetyLimit = Math.max(daysBack + 3, 12);
+  var i;
 
-  var m;
-  for (m = 0; m < monthResults.length; m++) {
-    var monthDates = monthResults[m].dates || [];
-    var j;
-    for (j = 0; j < monthDates.length; j++) {
-      var dateStr = monthDates[j];
-      if (!dateStr || seen[dateStr]) continue;
-      var parsed = this._parseCalendarDate(dateStr);
-      if (!parsed || parsed.getTime() > today.getTime()) continue;
-      seen[dateStr] = true;
-      allDates.push(dateStr);
+  for (i = 0; i < safetyLimit && dates.length < daysBack; i++) {
+    if (Date.now() - startMs > 12500) break;
+
+    var html = "";
+    try {
+      html = await this._fetchComicPage(currentUrl, headers);
+    } catch (e) {
+      cinder.warn("Comic page fetch failed for " + currentUrl + ": " + e);
+      break;
     }
+
+    if (!html || html.indexOf("This page could not be found") >= 0 || html.indexOf(">404<") >= 0) {
+      break;
+    }
+
+    var currentDate = this._extractCurrentPageDate(html) || this._parseCalendarDate(currentUrl.split("/").slice(-3).join("/"));
+    if (!currentDate) {
+      cinder.warn("Could not determine strip date for " + currentUrl);
+      break;
+    }
+
+    var currentKey = this._formatDateKey(currentDate);
+    if (!visited[currentKey]) {
+      visited[currentKey] = true;
+      dates.push(currentKey);
+    }
+
+    var previousDate = this._findPreviousDateFromHtml(slug, html, currentDate);
+    if (!previousDate) {
+      break;
+    }
+
+    var previousKey = this._formatDateKey(previousDate);
+    if (visited[previousKey]) break;
+    currentUrl = this.BASE_URL + "/" + slug + "/" + previousKey;
   }
 
-  allDates.sort(function(a, b) {
-    var parsedB = GoComics._parseCalendarDate(b);
-    var parsedA = GoComics._parseCalendarDate(a);
-    return (parsedB ? parsedB.getTime() : 0) - (parsedA ? parsedA.getTime() : 0);
-  });
-
-  var dates = allDates.slice(0, daysBack);
   if (dates.length === 0) {
     if (staleChapters.length > 0) {
-      cinder.warn("Calendar lookup returned no fresh dates for " + slug + ", using cached chapter list.");
+      cinder.warn("Chapter traversal returned no fresh dates for " + slug + ", using cached chapter list.");
       return staleChapters;
     }
-    cinder.warn("Calendar lookup returned no dates for " + slug + ", falling back to recent days.");
-    var fallback = [];
-    var i;
-    for (i = 0; i < daysBack; i++) {
-      var d = new Date(today);
-      d.setDate(today.getDate() - i);
-      var fallbackDate = d.getFullYear() + "/" +
-        String(d.getMonth() + 1).padStart(2, "0") + "/" +
-        String(d.getDate()).padStart(2, "0");
-      fallback.push({
-        id: slug + "|" + fallbackDate,
-        title: d.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric"
-        }),
-        chapterNumber: daysBack - i,
-        dateUploaded: d.toISOString().split("T")[0]
-      });
-    }
-    return fallback;
+    cinder.warn("Chapter traversal returned no dates for " + slug + ", falling back to recent days.");
+    return this._buildFallbackChapters(slug, daysBack, today);
   }
 
   var chapters = dates.map(function(dateStr, idx) {
@@ -605,7 +668,7 @@ GoComics.getSettings = function() {
     },
       {
         id: "days_back",
-        label: "Days of History to Load",
+        label: "Recent Strips to Load",
         type: "select",
         defaultValue: "14",
         options: [
