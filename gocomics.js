@@ -2,7 +2,7 @@ var GoComics = {};
 
 GoComics.id = "gocomics";
 GoComics.name = "GoComics";
-GoComics.version = "1.2.1-cinderfix";
+GoComics.version = "1.2.2-cinderfix";
 GoComics.icon = "GC";
 GoComics.description =
   "Read daily comic strips from GoComics.com - patched for Cinder.";
@@ -488,8 +488,27 @@ GoComics.getChapters = async function(slug) {
       cinder.warn("Calendar lookup returned no fresh dates for " + slug + ", using cached chapter list.");
       return staleChapters;
     }
-    cinder.warn("Calendar lookup returned no dates for " + slug + ".");
-    return [];
+    cinder.warn("Calendar lookup returned no dates for " + slug + ", falling back to recent days.");
+    var fallback = [];
+    var i;
+    for (i = 0; i < daysBack; i++) {
+      var d = new Date(today);
+      d.setDate(today.getDate() - i);
+      var fallbackDate = d.getFullYear() + "/" +
+        String(d.getMonth() + 1).padStart(2, "0") + "/" +
+        String(d.getDate()).padStart(2, "0");
+      fallback.push({
+        id: slug + "|" + fallbackDate,
+        title: d.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric"
+        }),
+        chapterNumber: daysBack - i,
+        dateUploaded: d.toISOString().split("T")[0]
+      });
+    }
+    return fallback;
   }
 
   var chapters = dates.map(function(dateStr, idx) {
