@@ -7,7 +7,7 @@ var DownMagazSource = {};
 
 DownMagazSource.id = "downmagaz";
 DownMagazSource.name = "DownMagaz";
-DownMagazSource.version = "4.0.6";
+DownMagazSource.version = "4.0.7";
 DownMagazSource.icon = "\uD83D\uDCF0";
 DownMagazSource.description =
   "Search and browse DownMagaz on device, then resolve issue links for PDF download.";
@@ -265,7 +265,7 @@ DownMagazSource._rankLinks = function(links) {
     var lower = String(link || "").toLowerCase();
     var score = 0;
 
-    if (lower.indexOf("downup.me") >= 0) score += 50;
+    if (lower.indexOf("downup.me") >= 0) score += 1000;
     if (lower.indexOf("pixeldrain") >= 0) score += 300;
     if (lower.indexOf("mediafire") >= 0) score += 250;
     if (lower.indexOf("gofile") >= 0) score += 220;
