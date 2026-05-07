@@ -7,7 +7,7 @@ var DownMagazSource = {};
 
 DownMagazSource.id = "downmagaz";
 DownMagazSource.name = "DownMagaz";
-DownMagazSource.version = "4.0.4";
+DownMagazSource.version = "4.0.6";
 DownMagazSource.icon = "\uD83D\uDCF0";
 DownMagazSource.description =
   "Search and browse DownMagaz on device, then resolve issue links for PDF download.";
@@ -259,14 +259,13 @@ DownMagazSource._probeDirectFileUrl = async function(url, referer) {
   }
   return false;
 };
-DownMagazSource._pickBestLink = function(links) {
-  if (!links || links.length === 0) return "";
-
+DownMagazSource._rankLinks = function(links) {
+  if (!links || links.length === 0) return [];
   function score(link) {
     var lower = String(link || "").toLowerCase();
     var score = 0;
 
-    if (lower.indexOf("downup.me") >= 0) score += 1000;
+    if (lower.indexOf("downup.me") >= 0) score += 50;
     if (lower.indexOf("pixeldrain") >= 0) score += 300;
     if (lower.indexOf("mediafire") >= 0) score += 250;
     if (lower.indexOf("gofile") >= 0) score += 220;
@@ -282,9 +281,13 @@ DownMagazSource._pickBestLink = function(links) {
     return score;
   }
 
-  var sorted = links.slice().sort(function(a, b) {
+  return links.slice().sort(function(a, b) {
     return score(b) - score(a);
   });
+};
+
+DownMagazSource._pickBestLink = function(links) {
+  var sorted = this._rankLinks(links);
   return sorted[0] || "";
 };
 
@@ -332,7 +335,8 @@ DownMagazSource.resolve = async function(item) {
 
   var html = await this._fetchText(pageUrl);
   var links = this._extractCandidateLinks(html, pageUrl);
-  var chosen = this._pickBestLink(links);
+  var rankedLinks = this._rankLinks(links);
+  var chosen = rankedLinks[0] || "";
 
   if (!chosen) {
     throw new Error("No downloadable link found on the issue page.");
@@ -354,6 +358,8 @@ DownMagazSource.resolve = async function(item) {
   return {
     url: directUrl || undefined,
     debridLink: chosen,
+    debridLinks: rankedLinks,
+    debridProvider: "debridlink",
     fileName: this._slugToFileName(item && item.title, ext)
   };
 };
