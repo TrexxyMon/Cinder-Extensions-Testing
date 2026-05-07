@@ -29,6 +29,15 @@
                            "contentType":  "manga",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/gocomics.js",
                            "minCinderVersion":  "2.0.0"
+                       },
+                       {
+                           "id":  "downmagaz-device",
+                           "name":  "DownMagaz",
+                           "version":  "4.0.0",
+                           "description":  "Search and browse DownMagaz on device, then resolve issue links for PDF download.",
+                           "contentType":  "books",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/downmagaz_device.js",
+                           "minCinderVersion":  "2.0.0"
                        }
                    ]
 }
