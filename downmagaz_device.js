@@ -74,7 +74,17 @@ DownMagazSource._headers = function() {
 DownMagazSource._fetchText = async function(url) {
   var headers = this._headers();
   var res = await cinder.fetch(url, { headers: headers, timeout: 20000 });
-  if (res && res.status === 200 && res.data && res.data.indexOf("<html") >= 0) {
+  if (
+    res &&
+    res.status === 200 &&
+    res.data &&
+    res.data.indexOf("<html") >= 0 &&
+    (
+      res.data.indexOf('class="story shortstory"') >= 0 ||
+      res.data.indexOf('class="fullstory"') >= 0 ||
+      res.data.indexOf('id="dle-content"') >= 0
+    )
+  ) {
     return res.data;
   }
 
@@ -110,24 +120,35 @@ DownMagazSource._slugToFileName = function(title, fallbackExt) {
 DownMagazSource._parseListings = function(html) {
   var results = [];
   var seen = {};
-  var blocks = String(html || "").split('<div class="story shortstory">');
+  var doc = cinder.parseHTML(html);
+  var cards = doc.querySelectorAll(".story.shortstory");
 
-  for (var i = 1; i < blocks.length; i++) {
-    var block = blocks[i];
-    var linkM = block.match(/href="(https:\/\/downmagaz\.net\/([a-z_]+)\/([^"]+\.html))">([^<]+)<\/a>/i);
-    if (!linkM) continue;
+  for (var i = 0; i < cards.length; i++) {
+    var card = cards[i];
+    var titleLink =
+      card.querySelector(".stitle a") ||
+      card.querySelector(".sheading a") ||
+      card.querySelector("a[href*=\"downmagaz.net/\"]");
+    if (!titleLink) continue;
 
-    var pageUrl = linkM[1];
-    var id = linkM[2] + "/" + linkM[3];
+    var href = titleLink.attr("href");
+    if (!href) continue;
+    var pageUrl = cinder.resolveUrl(href, this.BASE_URL + "/");
+    var idM = pageUrl.match(/^https:\/\/downmagaz\.net\/([a-z_]+)\/([^\/?#]+\.html)$/i);
+    if (!idM) continue;
+
+    var id = idM[1] + "/" + idM[2];
     if (seen[id]) continue;
     seen[id] = true;
 
-    var title = this._decode(linkM[4]);
-    var imgM = block.match(/src="(\/uploads\/mini\/[^"]+)"/i);
-    var cover = imgM ? this.BASE_URL + imgM[1] : "";
+    var title = this._decode(titleLink.text());
+    var imgEl = card.querySelector("img");
+    var imgSrc = imgEl ? (imgEl.attr("src") || imgEl.attr("data-src") || "") : "";
+    var cover = imgSrc ? cinder.resolveUrl(imgSrc, this.BASE_URL + "/") : "";
 
-    var sizeM = block.match(/(\d+(?:[.,]\d+)?)\s*(MB|GB|KB)/i);
-    var formatM = block.match(/\b(True\s+)?(PDF|CBZ|CBR|EPUB)\b/i);
+    var rawText = card.text ? card.text() : "";
+    var sizeM = rawText.match(/(\d+(?:[.,]\d+)?)\s*(MB|GB|KB)/i);
+    var formatM = rawText.match(/\b(True\s+)?(PDF|CBZ|CBR|EPUB)\b/i);
 
     results.push({
       id: id,
