@@ -7,7 +7,7 @@ var DownMagazSource = {};
 
 DownMagazSource.id = "downmagaz";
 DownMagazSource.name = "DownMagaz";
-DownMagazSource.version = "4.0.2";
+DownMagazSource.version = "4.0.4";
 DownMagazSource.icon = "\uD83D\uDCF0";
 DownMagazSource.description =
   "Search and browse DownMagaz on device, then resolve issue links for PDF download.";
@@ -103,8 +103,8 @@ DownMagazSource._decode = function(text) {
       .replace(/&#039;/g, "'")
       .replace(/&amp;/g, "&")
       .replace(/&quot;/g, '"')
-      .replace(/&#8211;/g, "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“")
-      .replace(/&#8212;/g, "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â")
+      .replace(/&#8211;/g, "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ")
+      .replace(/&#8212;/g, "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â")
   );
 };
 
@@ -262,22 +262,30 @@ DownMagazSource._probeDirectFileUrl = async function(url, referer) {
 DownMagazSource._pickBestLink = function(links) {
   if (!links || links.length === 0) return "";
 
-  var preferred = [];
-  var fallback = [];
-  var i;
+  function score(link) {
+    var lower = String(link || "").toLowerCase();
+    var score = 0;
 
-  for (i = 0; i < links.length; i++) {
-    var link = links[i];
-    var lower = link.toLowerCase();
-    if (lower.indexOf("turbobit") >= 0 || lower.indexOf("turb.to") >= 0) {
-      fallback.push(link);
-      continue;
-    }
-    preferred.push(link);
+    if (lower.indexOf("downup.me") >= 0) score += 1000;
+    if (lower.indexOf("pixeldrain") >= 0) score += 300;
+    if (lower.indexOf("mediafire") >= 0) score += 250;
+    if (lower.indexOf("gofile") >= 0) score += 220;
+    if (lower.indexOf("mega.nz") >= 0) score += 200;
+    if (lower.indexOf("1fichier") >= 0) score += 180;
+
+    if (DownMagazSource._looksLikeDirectFileUrl(lower)) score += 150;
+    if (lower.indexOf("download") >= 0) score += 40;
+
+    if (lower.indexOf("novafile") >= 0 || lower.indexOf("nfile.cc") >= 0) score -= 500;
+    if (lower.indexOf("turbobit") >= 0 || lower.indexOf("turb.to") >= 0) score -= 400;
+
+    return score;
   }
 
-  if (preferred.length > 0) return preferred[0];
-  return fallback[0];
+  var sorted = links.slice().sort(function(a, b) {
+    return score(b) - score(a);
+  });
+  return sorted[0] || "";
 };
 
 DownMagazSource.search = async function(query, page) {
@@ -296,7 +304,7 @@ DownMagazSource.search = async function(query, page) {
 
 DownMagazSource.getDiscoverSections = async function() {
   return this.CATEGORIES.map(function(c) {
-    return { id: c.id, title: c.title, icon: "ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â°" };
+    return { id: c.id, title: c.title, icon: "ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒâ€šÃ‚Â°" };
   });
 };
 
