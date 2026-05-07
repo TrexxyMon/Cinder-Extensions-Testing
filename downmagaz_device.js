@@ -5,10 +5,10 @@
 
 var DownMagazSource = {};
 
-DownMagazSource.id = "downmagaz-device";
+DownMagazSource.id = "downmagaz";
 DownMagazSource.name = "DownMagaz";
-DownMagazSource.version = "4.0.0";
-DownMagazSource.icon = "📰";
+DownMagazSource.version = "4.0.1";
+DownMagazSource.icon = "\uD83D\uDCF0";
 DownMagazSource.description =
   "Search and browse DownMagaz on device, then resolve issue links for PDF download.";
 DownMagazSource.contentType = "books";
@@ -103,8 +103,8 @@ DownMagazSource._decode = function(text) {
       .replace(/&#039;/g, "'")
       .replace(/&amp;/g, "&")
       .replace(/&quot;/g, '"')
-      .replace(/&#8211;/g, "–")
-      .replace(/&#8212;/g, "—")
+      .replace(/&#8211;/g, "Ã¢â‚¬â€œ")
+      .replace(/&#8212;/g, "Ã¢â‚¬â€")
   );
 };
 
@@ -262,7 +262,7 @@ DownMagazSource.search = async function(query, page) {
 
 DownMagazSource.getDiscoverSections = async function() {
   return this.CATEGORIES.map(function(c) {
-    return { id: c.id, title: c.title, icon: "📰" };
+    return { id: c.id, title: c.title, icon: "Ã°Å¸â€œÂ°" };
   });
 };
 
