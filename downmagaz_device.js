@@ -7,7 +7,7 @@ var DownMagazSource = {};
 
 DownMagazSource.id = "downmagaz";
 DownMagazSource.name = "DownMagaz";
-DownMagazSource.version = "4.0.1";
+DownMagazSource.version = "4.0.2";
 DownMagazSource.icon = "\uD83D\uDCF0";
 DownMagazSource.description =
   "Search and browse DownMagaz on device, then resolve issue links for PDF download.";
@@ -103,8 +103,8 @@ DownMagazSource._decode = function(text) {
       .replace(/&#039;/g, "'")
       .replace(/&amp;/g, "&")
       .replace(/&quot;/g, '"')
-      .replace(/&#8211;/g, "Ã¢â‚¬â€œ")
-      .replace(/&#8212;/g, "Ã¢â‚¬â€")
+      .replace(/&#8211;/g, "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“")
+      .replace(/&#8212;/g, "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â")
   );
 };
 
@@ -225,6 +225,40 @@ DownMagazSource._extractCandidateLinks = function(html, pageUrl) {
   return out;
 };
 
+DownMagazSource._looksLikeDirectFileUrl = function(url) {
+  if (!url) return false;
+  return /\.(pdf|epub|cbz|cbr)(?:$|[?#])/i.test(String(url));
+};
+
+DownMagazSource._probeDirectFileUrl = async function(url, referer) {
+  if (!url) return false;
+  try {
+    var res = await cinder.fetch(url, {
+      method: "HEAD",
+      headers: {
+        "Referer": referer || this.BASE_URL + "/"
+      },
+      timeout: 20000
+    });
+
+    var headers = (res && res.headers) || {};
+    var contentType = String(headers["content-type"] || headers["Content-Type"] || "").toLowerCase();
+    var disposition = String(headers["content-disposition"] || headers["Content-Disposition"] || "").toLowerCase();
+
+    if (disposition.indexOf("filename=") >= 0 || disposition.indexOf("attachment") >= 0) {
+      return true;
+    }
+    if (contentType && contentType.indexOf("text/html") >= 0) {
+      return false;
+    }
+    if (/application\/(pdf|epub\+zip|octet-stream|zip|x-cbr|x-cbz|x-rar-compressed)/i.test(contentType)) {
+      return true;
+    }
+  } catch (e) {
+    cinder.warn("direct file probe failed:", String(e));
+  }
+  return false;
+};
 DownMagazSource._pickBestLink = function(links) {
   if (!links || links.length === 0) return "";
 
@@ -262,7 +296,7 @@ DownMagazSource.search = async function(query, page) {
 
 DownMagazSource.getDiscoverSections = async function() {
   return this.CATEGORIES.map(function(c) {
-    return { id: c.id, title: c.title, icon: "Ã°Å¸â€œÂ°" };
+    return { id: c.id, title: c.title, icon: "ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â°" };
   });
 };
 
@@ -302,8 +336,15 @@ DownMagazSource.resolve = async function(item) {
   else if (lower.indexOf(".cbr") >= 0) ext = "cbr";
   else if (lower.indexOf(".epub") >= 0) ext = "epub";
 
+  var directUrl = "";
+  if (this._looksLikeDirectFileUrl(chosen)) {
+    directUrl = chosen;
+  } else if (await this._probeDirectFileUrl(chosen, pageUrl)) {
+    directUrl = chosen;
+  }
+
   return {
-    url: chosen,
+    url: directUrl || undefined,
     debridLink: chosen,
     fileName: this._slugToFileName(item && item.title, ext)
   };

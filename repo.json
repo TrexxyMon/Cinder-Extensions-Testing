@@ -33,7 +33,7 @@
                        {
                            "id":  "downmagaz",
                            "name":  "DownMagaz",
-                           "version":  "4.0.1",
+                           "version":  "4.0.2",
                            "description":  "Search and browse DownMagaz on device, then resolve issue links for PDF download.",
                            "contentType":  "books",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/downmagaz_device.js",
