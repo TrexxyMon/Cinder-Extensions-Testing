@@ -7,7 +7,7 @@ var DownMagazSource = {};
 
 DownMagazSource.id = "downmagaz";
 DownMagazSource.name = "DownMagaz";
-DownMagazSource.version = "4.0.7";
+DownMagazSource.version = "4.0.8";
 DownMagazSource.icon = "\uD83D\uDCF0";
 DownMagazSource.description =
   "Search and browse DownMagaz on device, then resolve issue links for PDF download.";
@@ -184,6 +184,7 @@ DownMagazSource._extractCandidateLinks = function(html, pageUrl) {
 
   function addLink(link) {
     if (!link || seen[link]) return;
+    if (!/^https?:\/\//i.test(String(link))) return;
     seen[link] = true;
     out.push(link);
   }
@@ -286,6 +287,20 @@ DownMagazSource._rankLinks = function(links) {
   });
 };
 
+DownMagazSource._debridLinkCandidates = function(links) {
+  var ranked = this._rankLinks(links).filter(function(link) {
+    return /^https?:\/\//i.test(String(link || ""));
+  });
+  var downup = ranked.filter(function(link) {
+    return String(link || "").toLowerCase().indexOf("downup.me") >= 0;
+  });
+  if (downup.length > 0) return downup;
+  return ranked.filter(function(link) {
+    var lower = String(link || "").toLowerCase();
+    return lower.indexOf("javascript:") < 0 && lower.indexOf("addcomplaint") < 0;
+  });
+};
+
 DownMagazSource._pickBestLink = function(links) {
   var sorted = this._rankLinks(links);
   return sorted[0] || "";
@@ -335,7 +350,8 @@ DownMagazSource.resolve = async function(item) {
 
   var html = await this._fetchText(pageUrl);
   var links = this._extractCandidateLinks(html, pageUrl);
-  var rankedLinks = this._rankLinks(links);
+  var rankedLinks = this._debridLinkCandidates(links);
+  cinder.log("DownMagaz candidates:", rankedLinks.slice(0, 8).join(" | "));
   var chosen = rankedLinks[0] || "";
 
   if (!chosen) {
