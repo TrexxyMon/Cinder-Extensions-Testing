@@ -31,13 +31,14 @@
                            "minCinderVersion":  "2.0.0"
                        },
                        {
-                           "id":  "downmagaz",
-                           "name":  "DownMagaz",
-                           "version":  "4.0.10",
-                           "description":  "Search and browse DownMagaz on device, then resolve issue links for PDF download.",
+                           "id":  "royalroad",
+                           "name":  "Royal Road",
+                           "version":  "1.0.0",
+                           "description":  "Search chaptered fiction from Royal Road and package it into EPUB for reading in Cinder.",
                            "contentType":  "books",
-                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/downmagaz_device.js",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/royalroad.js",
                            "minCinderVersion":  "2.0.0"
                        }
                    ]
 }
+
