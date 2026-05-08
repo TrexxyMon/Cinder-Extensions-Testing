@@ -276,34 +276,58 @@ __cinderExport = {
 
     getBookChapters: async function(bookId) {
         var bookUrl = this._fictionUrlFromBookId(bookId);
+        var extractChapters = function(doc) {
+            var selectors = [
+                "table tbody tr a[href*='/chapter/']",
+                ".chapter-row a[href*='/chapter/']",
+                "div[data-fiction-id] a[href*='/chapter/']",
+                "a[href*='/chapter/']",
+            ];
+            var chapters = [];
+            var seen = {};
+
+            for (var selectorIndex = 0; selectorIndex < selectors.length; selectorIndex++) {
+                var chapterLinks = doc.querySelectorAll(selectors[selectorIndex]);
+                for (var i = 0; i < chapterLinks.length; i++) {
+                    var chapterLink = chapterLinks[i];
+                    var href = chapterLink.attr("href") || "";
+                    if (!href) continue;
+                    var chapterUrl = cinder.resolveUrl(href, bookUrl);
+                    if (!/\/chapter\/\d+\//i.test(chapterUrl)) continue;
+                    if (seen[chapterUrl]) continue;
+
+                    var title = this._decode(chapterLink.text()) || this._chapterTitleFromUrl(chapterUrl);
+                    if (!title) continue;
+
+                    seen[chapterUrl] = true;
+                    chapters.push({
+                        id: chapterUrl,
+                        title: title,
+                        index: chapters.length + 1,
+                        url: chapterUrl,
+                    });
+                }
+                if (chapters.length) break;
+            }
+
+            return chapters;
+        }.bind(this);
+
         var html = await this._fetchHtml(bookUrl);
-        var doc = cinder.parseHTML(html);
-        var chapterLinks = doc.querySelectorAll("table tbody tr a[href*='/chapter/'], tbody tr a[href*='/chapter/'], a[href*='/chapter/']");
-        var chapters = [];
-        var seen = {};
+        var chapters = extractChapters(cinder.parseHTML(html));
 
-        for (var i = 0; i < chapterLinks.length; i++) {
-            var chapterLink = chapterLinks[i];
-            var href = chapterLink.attr("href") || "";
-            if (!href) continue;
-            var chapterUrl = cinder.resolveUrl(href, bookUrl);
-            if (!/\/chapter\/\d+\//i.test(chapterUrl)) continue;
-            if (seen[chapterUrl]) continue;
-
-            var title = this._decode(chapterLink.text());
-            if (!title) continue;
-
-            seen[chapterUrl] = true;
-            chapters.push({
-                id: chapterUrl,
-                title: title,
-                index: chapters.length + 1,
-                url: chapterUrl,
+        if (!chapters.length) {
+            var browserResponse = await cinder.fetchBrowser(bookUrl, {
+                headers: this._headers(),
+                timeout: 30000,
             });
+            if (browserResponse && browserResponse.status === 200 && browserResponse.data) {
+                chapters = extractChapters(cinder.parseHTML(browserResponse.data));
+            }
         }
 
         if (!chapters.length) {
-            throw new Error("No chapters found on Royal Road.");
+            throw new Error("Royal Road did not expose any chapter links for this fiction.");
         }
 
         return chapters;
@@ -327,5 +351,6 @@ __cinderExport = {
         };
     },
 };
+
 
 
