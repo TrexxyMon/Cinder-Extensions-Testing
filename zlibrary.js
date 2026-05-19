@@ -13,7 +13,7 @@
 __cinderExport = {
 	id: "zlibrary-direct",
 	name: "Z-Library (Direct)",
-	version: "2.2.7",
+	version: "2.2.8",
 	icon: "📖",
 	description: "Native Z-Library downloader. Uses WebView session for Cloudflare bypass.",
 	contentType: "books",
@@ -188,7 +188,7 @@ __cinderExport = {
 		var dailyLimitHit = html.indexOf("Daily limit") !== -1 || html.indexOf("daily limit") !== -1;
 
 		if (dailyLimitHit) {
-			cinder.warn("[Z-Lib] Daily download limit reached!");
+			throw new Error("Z-Library reported a daily download limit on the book page.");
 		}
 
 										// Download through the WebView browser engine so we can capture native
@@ -237,7 +237,11 @@ __cinderExport = {
 					cinder.warn("[Z-Lib] WebView binary fetch failed. Trying IPFS...");
 				}
 			} catch (e) {
-				cinder.warn("[Z-Lib] WebView binary fetch error: " + e.message + ". Trying IPFS...");
+				var message = (e && e.message) ? e.message : String(e);
+				if (message.toLowerCase().indexOf("daily download limit") !== -1 || message.toLowerCase().indexOf("daily limit") !== -1) {
+					throw new Error(message);
+				}
+				cinder.warn("[Z-Lib] WebView binary fetch error: " + message + ". Trying IPFS...");
 			}
 		}
 
@@ -278,6 +282,9 @@ __cinderExport = {
 		};
 	}
 };
+
+
+
 
 
 
