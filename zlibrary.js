@@ -13,7 +13,7 @@
 __cinderExport = {
 	id: "zlibrary-direct",
 	name: "Z-Library (Direct)",
-	version: "2.2.2",
+	version: "2.2.3",
 	icon: "📖",
 	description: "Native Z-Library downloader. Uses WebView session for Cloudflare bypass.",
 	contentType: "books",
@@ -191,59 +191,20 @@ __cinderExport = {
 			cinder.warn("[Z-Lib] Daily download limit reached!");
 		}
 
-		// The WebView navigates to /dl/, follows JS redirects, and either:
-		// - Returns a CDN URL (prefixed with "URL:") that the native downloader can fetch
-		// - Returns base64 binary data of the file
-		// - Returns an error (daily limit, etc.)
+				// The /dl/ URL is the real download entrypoint when opened in an authenticated browser
+		// session. Let the native downloader hit that URL directly with the same browser-style
+		// context instead of trying to discover a later CDN hop.
 		if (!dailyLimitHit) {
-			cinder.log("[Z-Lib] Downloading file via WebView: " + dlLink);
-			try {
-				var binResp = await cinder.fetchBrowserBinary(dlLink);
-				if (binResp.status === 200 && binResp.data) {
-					// Check if it's a CDN URL (the WebView captured the redirect destination)
-					if (typeof binResp.data === "string" && binResp.data.indexOf("URL:") === 0) {
-						var cdnUrl = binResp.data.substring(4);
-						if (this._isIntermediateUrl(cdnUrl)) {
-							cinder.warn("[Z-Lib] WebView returned intermediary HTML route instead of file URL: " + cdnUrl);
-						} else {
-							cinder.log("[Z-Lib] SUCCESS: Got CDN download URL: " + cdnUrl);
-							return {
-								url: cdnUrl,
-								fileName: item.title + "." + (item.format || "epub"),
-								headers: {
-									Referer: dlLink
-								}
-							};
-						}
-					}
-					
-					// Check if it's base64 binary data
-					if (binResp.data.length > 100) {
-						var prefix = binResp.data.substring(0, 4);
-						if (prefix === "UEsD" || prefix === "UEsF") {
-							cinder.log("[Z-Lib] SUCCESS: Got EPUB via WebView (" + Math.round(binResp.data.length * 3/4/1024) + " KB)");
-							return {
-								url: "data:application/epub+zip;base64," + binResp.data,
-								fileName: item.title + "." + (item.format || "epub")
-							};
-						} else if (prefix === "JVBE") {
-							cinder.log("[Z-Lib] SUCCESS: Got PDF via WebView (" + Math.round(binResp.data.length * 3/4/1024) + " KB)");
-							return {
-								url: "data:application/pdf;base64," + binResp.data,
-								fileName: item.title + ".pdf"
-							};
-						} else {
-							cinder.warn("[Z-Lib] WebView returned non-ebook data (prefix: " + prefix + "). Trying IPFS...");
-						}
-					} else {
-						cinder.warn("[Z-Lib] WebView response too short (" + (binResp.data || "").length + " bytes). Trying IPFS...");
-					}
-				} else {
-					cinder.warn("[Z-Lib] WebView binary fetch failed. Trying IPFS...");
+			cinder.log("[Z-Lib] Returning direct /dl/ URL: " + dlLink);
+			return {
+				url: dlLink,
+				fileName: item.title + "." + (item.format || "epub"),
+				headers: {
+					Referer: item.url,
+					Origin: domain,
+					Accept: "application/epub+zip, application/octet-stream, */*"
 				}
-			} catch (e) {
-				cinder.warn("[Z-Lib] WebView binary fetch error: " + e.message + ". Trying IPFS...");
-			}
+			};
 		}
 
 		// Step 4: IPFS fallback
@@ -283,3 +244,5 @@ __cinderExport = {
 		};
 	}
 };
+
+
