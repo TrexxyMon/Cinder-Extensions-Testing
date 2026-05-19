@@ -13,7 +13,7 @@
 __cinderExport = {
 	id: "zlibrary-direct",
 	name: "Z-Library (Direct)",
-	version: "2.2.1",
+	version: "2.2.2",
 	icon: "📖",
 	description: "Native Z-Library downloader. Uses WebView session for Cloudflare bypass.",
 	contentType: "books",
@@ -47,6 +47,18 @@ __cinderExport = {
 	// ── Internals ──
 
 	_DOMAINS: ["zlib.li", "z-lib.gs", "z-library.rs", "singlelogin.re"],
+
+	_isIntermediateUrl: function(url) {
+		if (!url) return true;
+		try {
+			var parsed = new URL(url);
+			var path = (parsed.pathname || "").toLowerCase();
+			return path.indexOf("/dl/") !== -1 || path.indexOf("/book/") !== -1 || path.indexOf("/s/") !== -1;
+		} catch (err) {
+			var lower = String(url).toLowerCase();
+			return lower.indexOf("/dl/") !== -1 || lower.indexOf("/book/") !== -1 || lower.indexOf("/s/") !== -1;
+		}
+	},
 
 	// Use fetchBrowser (WebView) for ALL Z-Library requests.
 	// This ensures Cloudflare is bypassed and session cookies are established
@@ -191,11 +203,18 @@ __cinderExport = {
 					// Check if it's a CDN URL (the WebView captured the redirect destination)
 					if (typeof binResp.data === "string" && binResp.data.indexOf("URL:") === 0) {
 						var cdnUrl = binResp.data.substring(4);
-						cinder.log("[Z-Lib] SUCCESS: Got CDN download URL: " + cdnUrl);
-						return {
-							url: cdnUrl,
-							fileName: item.title + "." + (item.format || "epub")
-						};
+						if (this._isIntermediateUrl(cdnUrl)) {
+							cinder.warn("[Z-Lib] WebView returned intermediary HTML route instead of file URL: " + cdnUrl);
+						} else {
+							cinder.log("[Z-Lib] SUCCESS: Got CDN download URL: " + cdnUrl);
+							return {
+								url: cdnUrl,
+								fileName: item.title + "." + (item.format || "epub"),
+								headers: {
+									Referer: dlLink
+								}
+							};
+						}
 					}
 					
 					// Check if it's base64 binary data
