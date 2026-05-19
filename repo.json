@@ -15,7 +15,7 @@
                        {
                            "id":  "zlibrary-direct",
                            "name":  "Z-Library (Direct)",
-                           "version":  "2.2.5",
+                           "version":  "2.2.6",
                            "description":  "Advanced Z-Library scraper with IPFS bypass and direct reader support.",
                            "contentType":  "books",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/zlibrary.js",
@@ -32,6 +32,7 @@
                        }
                    ]
 }
+
 
 
 

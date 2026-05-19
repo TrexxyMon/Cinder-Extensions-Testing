@@ -13,7 +13,7 @@
 __cinderExport = {
 	id: "zlibrary-direct",
 	name: "Z-Library (Direct)",
-	version: "2.2.5",
+	version: "2.2.6",
 	icon: "📖",
 	description: "Native Z-Library downloader. Uses WebView session for Cloudflare bypass.",
 	contentType: "books",
@@ -200,7 +200,6 @@ __cinderExport = {
 				fileName: item.title + "." + (item.format || "epub"),
 				headers: {
 					Referer: item.url,
-					Origin: domain,
 					Accept: "application/epub+zip, application/octet-stream, */*",
 					"X-Cinder-Use-JsFetch": "1"
 				}
@@ -244,6 +243,7 @@ __cinderExport = {
 		};
 	}
 };
+
 
 
 
