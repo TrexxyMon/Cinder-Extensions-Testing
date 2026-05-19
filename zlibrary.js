@@ -13,7 +13,7 @@
 __cinderExport = {
 	id: "zlibrary-direct",
 	name: "Z-Library (Direct)",
-	version: "2.2.4",
+	version: "2.2.5",
 	icon: "📖",
 	description: "Native Z-Library downloader. Uses WebView session for Cloudflare bypass.",
 	contentType: "books",
@@ -191,35 +191,20 @@ __cinderExport = {
 			cinder.warn("[Z-Lib] Daily download limit reached!");
 		}
 
-						// Download the file inside the authenticated browser context so Z-Library
-		// sees the same session/cookies that worked for search and detail pages.
+								// The /dl/ URL is the real download entrypoint, but it needs the shared
+		// React Native cookie jar instead of expo-file-system's transport.
 		if (!dailyLimitHit) {
-			cinder.log("[Z-Lib] Downloading file via WebView browser context: " + dlLink);
-			try {
-				var binResp = await cinder.fetchBrowserBinary(dlLink);
-				if (binResp.status === 200 && binResp.data && binResp.data.length > 100) {
-					var prefix = binResp.data.substring(0, 4);
-					if (prefix === "UEsD" || prefix === "UEsF") {
-						cinder.log("[Z-Lib] SUCCESS: Got EPUB via WebView (" + Math.round(binResp.data.length * 3/4/1024) + " KB)");
-						return {
-							url: "data:application/epub+zip;base64," + binResp.data,
-							fileName: item.title + "." + (item.format || "epub")
-						};
-					}
-					if (prefix === "JVBE") {
-						cinder.log("[Z-Lib] SUCCESS: Got PDF via WebView (" + Math.round(binResp.data.length * 3/4/1024) + " KB)");
-						return {
-							url: "data:application/pdf;base64," + binResp.data,
-							fileName: item.title + ".pdf"
-						};
-					}
-					cinder.warn("[Z-Lib] WebView returned non-ebook data (prefix: " + prefix + "). Trying IPFS...");
-				} else {
-					cinder.warn("[Z-Lib] WebView binary fetch failed or was too short. Trying IPFS...");
+			cinder.log("[Z-Lib] Returning direct /dl/ URL for JS fetch: " + dlLink);
+			return {
+				url: dlLink,
+				fileName: item.title + "." + (item.format || "epub"),
+				headers: {
+					Referer: item.url,
+					Origin: domain,
+					Accept: "application/epub+zip, application/octet-stream, */*",
+					"X-Cinder-Use-JsFetch": "1"
 				}
-			} catch (e) {
-				cinder.warn("[Z-Lib] WebView binary fetch error: " + e.message + ". Trying IPFS...");
-			}
+			};
 		}
 
 		// Step 4: IPFS fallback
@@ -259,6 +244,7 @@ __cinderExport = {
 		};
 	}
 };
+
 
 
 
