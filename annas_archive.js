@@ -13,7 +13,7 @@
 __cinderExport = {
 	id: "annas-archive-slow",
 	name: "Anna's Archive",
-	version: "2.1.0",
+	version: "2.1.1",
 	icon: "📚",
 	description: "Fast downloads from Anna's Archive with multiple acceleration strategies.",
 	contentType: "books",
@@ -123,7 +123,7 @@ __cinderExport = {
 
 			if (resp.status === 403 || (resp.data && resp.data.indexOf("cf-challenge") !== -1) || (resp.data && resp.data.length < 500 && resp.data.indexOf("challenge") !== -1)) {
 				cinder.log("[AA] Cloudflare detected, falling back to browser fetch for: " + url);
-				return await cinder.fetchBrowser(url);
+				return await cinder.fetchBrowser(url, { headers: { "X-Cinder-Suppress-Interactive": "1" } });
 			}
 
 			if (resp.status === 200 && resp.data && resp.data.length > 500) {
@@ -131,10 +131,10 @@ __cinderExport = {
 			}
 
 			cinder.warn("[AA] Unexpected status " + resp.status + " for: " + url);
-			return await cinder.fetchBrowser(url);
+			return await cinder.fetchBrowser(url, { headers: { "X-Cinder-Suppress-Interactive": "1" } });
 		} catch (err) {
 			cinder.warn("[AA] fetch failed, trying browser: " + err);
-			return await cinder.fetchBrowser(url);
+			return await cinder.fetchBrowser(url, { headers: { "X-Cinder-Suppress-Interactive": "1" } });
 		}
 	},
 
@@ -424,10 +424,10 @@ __cinderExport = {
 					if (slowResp.status === 403 || !slowResp.data || slowResp.data.length < 500 ||
 						(slowResp.data.indexOf("cf-challenge") !== -1)) {
 						cinder.log("[AA] CF blocked on fetch, trying browser...");
-						slowResp = await cinder.fetchBrowser(slowUrl);
+						slowResp = await cinder.fetchBrowser(slowUrl, { headers: { "X-Cinder-Suppress-Interactive": "1" } });
 					}
 				} catch (fetchErr) {
-					slowResp = await cinder.fetchBrowser(slowUrl);
+					slowResp = await cinder.fetchBrowser(slowUrl, { headers: { "X-Cinder-Suppress-Interactive": "1" } });
 				}
 
 				if (!slowResp || !slowResp.data || slowResp.data.length < 200) continue;
@@ -693,4 +693,5 @@ __cinderExport = {
 		return null;
 	},
 };
+
 
