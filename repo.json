@@ -1,12 +1,12 @@
 {
-    "version":  "2.1.2",
+    "version":  "2.1.3",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
                        {
                            "id":  "annas-archive-slow",
                            "name":  "Anna\u0027s Archive",
-                           "version":  "2.1.2",
+                           "version":  "2.1.3",
                            "description":  "Fast downloads from Anna\u0027s Archive with multiple acceleration strategies.",
                            "contentType":  "books",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/annas_archive.js",
