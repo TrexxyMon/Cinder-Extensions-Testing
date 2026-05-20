@@ -13,7 +13,7 @@
 __cinderExport = {
 	id: "annas-archive-slow",
 	name: "Anna's Archive",
-	version: "2.1.1",
+	version: "2.1.2",
 	icon: "📚",
 	description: "Fast downloads from Anna's Archive with multiple acceleration strategies.",
 	contentType: "books",
@@ -73,6 +73,16 @@ __cinderExport = {
 			{
 				id: "enable_mirror_race",
 				label: "Parallel Mirror Racing",
+				type: "select",
+				defaultValue: "true",
+				options: [
+					{ label: "Enabled", value: "true" },
+					{ label: "Disabled", value: "false" },
+				],
+			},
+			{
+				id: "enable_mirror_probe",
+				label: "Probe Mirror Speed",
 				type: "select",
 				defaultValue: "true",
 				options: [
@@ -382,10 +392,11 @@ __cinderExport = {
 
 		// ── Strategy 3: Parallel Mirror Race (REAL first-one-wins) ──
 		var enableRace = await cinder.store.get("enable_mirror_race");
-		if (enableRace !== "false" && httpsAnchors.length >= 1) {
+		if (enableRace !== "false" && orderedLinks.length >= 1) {
 			try {
-				cinder.log("[AA] 🏁 Racing " + httpsAnchors.length + " HTTPS mirrors + pending Libgen...");
-				var raceResult = await this._raceMirrors(httpsAnchors, baseUrl, pendingLibgen);
+				var raceLinks = orderedLinks.slice(0, Math.min(orderedLinks.length, 4));
+				cinder.log("[AA] Racing " + raceLinks.length + " mirrors + pending Libgen...");
+				var raceResult = await this._raceMirrors(raceLinks, baseUrl, pendingLibgen);
 				if (raceResult) {
 					cinder.log("[AA] 🚀 Race winner: " + raceResult.url.substring(0, 80));
 					return {
@@ -519,6 +530,101 @@ __cinderExport = {
 		return null;
 	},
 
+	_header: function(headers, name) {
+		if (!headers) return "";
+		var direct = headers[name] || headers[name.toLowerCase()] || headers[name.toUpperCase()];
+		if (direct) return String(direct);
+		var wanted = name.toLowerCase();
+		for (var key in headers) {
+			if (String(key).toLowerCase() === wanted) return String(headers[key]);
+		}
+		return "";
+	},
+
+	_probeDirectCandidate: async function(candidate) {
+		var started = Date.now();
+		try {
+			var resp = await cinder.fetch(candidate.url, {
+				method: "HEAD",
+				headers: {
+					"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+					"Accept": "*/*",
+					"Referer": candidate.referer || "https://annas-archive.gd/",
+				},
+				timeout: 4500,
+			});
+
+			var elapsed = Date.now() - started;
+			if (resp.status < 200 || resp.status >= 400) {
+				throw new Error("HTTP " + resp.status);
+			}
+
+			var contentType = this._header(resp.headers, "content-type").toLowerCase();
+			if (contentType.indexOf("html") !== -1 || contentType.indexOf("json") !== -1 || contentType.indexOf("text/plain") !== -1) {
+				throw new Error("bad content-type " + contentType);
+			}
+
+			var acceptRanges = this._header(resp.headers, "accept-ranges").toLowerCase();
+			var contentLength = parseInt(this._header(resp.headers, "content-length") || "0", 10) || 0;
+			var score = elapsed + (acceptRanges.indexOf("bytes") !== -1 ? -250 : 0) + (contentLength > 0 ? 0 : 150);
+			cinder.log("[AA] Probe OK " + this._candidateHost(candidate.url) + " " + elapsed + "ms ranges=" + (acceptRanges || "none") + " size=" + contentLength);
+			return {
+				candidate: candidate,
+				ok: true,
+				score: score,
+				elapsed: elapsed,
+				acceptRanges: acceptRanges,
+				contentLength: contentLength,
+			};
+		} catch (err) {
+			cinder.warn("[AA] Probe failed " + this._candidateHost(candidate.url) + ": " + err);
+			return {
+				candidate: candidate,
+				ok: false,
+				score: 999999,
+				elapsed: Date.now() - started,
+			};
+		}
+	},
+
+	_candidateHost: function(url) {
+		var match = String(url || "").match(/^https?:\/\/([^\/]+)/i);
+		return match ? match[1] : "unknown-host";
+	},
+
+	_pickBestCandidate: async function(candidates) {
+		var unique = [];
+		var seen = {};
+		for (var i = 0; i < candidates.length; i++) {
+			if (!candidates[i] || !candidates[i].url || seen[candidates[i].url]) continue;
+			seen[candidates[i].url] = true;
+			unique.push(candidates[i]);
+		}
+
+		if (unique.length === 0) return null;
+		if (unique.length === 1) return unique[0];
+
+		var enableProbe = await cinder.store.get("enable_mirror_probe");
+		if (enableProbe === "false") return unique[0];
+
+		var probeSet = unique.slice(0, Math.min(unique.length, 3));
+		cinder.log("[AA] Probing " + probeSet.length + " direct mirror candidates...");
+		var results = await Promise.all(probeSet.map(this._probeDirectCandidate.bind(this)));
+		var best = null;
+		for (var j = 0; j < results.length; j++) {
+			if (!results[j].ok) continue;
+			if (!best || results[j].score < best.score) best = results[j];
+		}
+
+		if (best) {
+			cinder.log("[AA] Probe selected " + this._candidateHost(best.candidate.url) + " in " + best.elapsed + "ms");
+			return best.candidate;
+		}
+
+		cinder.warn("[AA] All probes failed; using first resolved candidate");
+		return unique[0];
+	},
+
 	/**
 	 * Strategy 3: Race multiple slow download mirrors + pending Libgen.
 	 * Uses REAL first-one-wins: resolves the instant ANY mirror returns a download URL.
@@ -560,10 +666,10 @@ __cinderExport = {
 							});
 							if (resp.status === 403 || !resp.data || resp.data.length < 500 ||
 								(resp.data.indexOf("cf-challenge") !== -1)) {
-								resp = await cinder.fetchBrowser(slowUrl);
+								resp = await cinder.fetchBrowser(slowUrl, { headers: { "X-Cinder-Suppress-Interactive": "1" } });
 							}
 						} catch (e) {
-							resp = await cinder.fetchBrowser(slowUrl);
+							resp = await cinder.fetchBrowser(slowUrl, { headers: { "X-Cinder-Suppress-Interactive": "1" } });
 						}
 
 						if (!resp || !resp.data || resp.data.length < 200) return null;
@@ -585,6 +691,41 @@ __cinderExport = {
 					})
 				);
 			})(mirrorPaths[i], i);
+		}
+
+		var candidates = [];
+		var tracked = entries.map(function(p) {
+			return p.then(function(result) {
+				if (result && result.url) candidates.push(result);
+				return result;
+			}).catch(function() { return null; });
+		});
+
+		await new Promise(function(resolve) {
+			var finished = 0;
+			tracked.forEach(function(p) {
+				p.then(function() {
+					finished++;
+					if (candidates.length >= 2 || finished === tracked.length) {
+						resolve();
+					}
+				}).catch(function() {
+					finished++;
+					if (finished === tracked.length) resolve();
+				});
+			});
+			setTimeout(resolve, 9000);
+		});
+
+		if (candidates.length === 0) {
+			await Promise.race([
+				Promise.all(tracked),
+				new Promise(function(resolve) { setTimeout(resolve, 6000); }),
+			]);
+		}
+
+		if (candidates.length > 0) {
+			return await this._pickBestCandidate(candidates);
 		}
 
 		// REAL first-one-wins: resolve as soon as ANY entry returns non-null
