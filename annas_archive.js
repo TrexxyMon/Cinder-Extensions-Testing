@@ -13,7 +13,7 @@
 __cinderExport = {
 	id: "annas-archive-slow",
 	name: "Anna's Archive",
-	version: "2.1.4",
+	version: "2.1.5",
 	icon: "📚",
 	description: "Fast downloads from Anna's Archive with multiple acceleration strategies.",
 	contentType: "books",
@@ -560,10 +560,10 @@ __cinderExport = {
 							});
 							if (resp.status === 403 || !resp.data || resp.data.length < 500 ||
 								(resp.data.indexOf("cf-challenge") !== -1)) {
-								resp = await cinder.fetchBrowser(slowUrl);
+								resp = await cinder.fetchBrowser(slowUrl, { headers: { "X-Cinder-Suppress-Interactive": "1" } });
 							}
 						} catch (e) {
-							resp = await cinder.fetchBrowser(slowUrl);
+							resp = await cinder.fetchBrowser(slowUrl, { headers: { "X-Cinder-Suppress-Interactive": "1" } });
 						}
 
 						if (!resp || !resp.data || resp.data.length < 200) return null;
