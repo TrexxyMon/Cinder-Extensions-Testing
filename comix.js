@@ -2,7 +2,7 @@ var Comix = {};
 
 Comix.id = "comix";
 Comix.name = "Comix";
-Comix.version = "1.0.0-cinder";
+Comix.version = "1.0.1-cinder";
 Comix.icon = "CX";
 Comix.description = "Read manga, manhwa, and manhua from Comix.";
 Comix.contentType = "manga";
@@ -93,6 +93,12 @@ Comix._apiGet = async function(path, params) {
   var raw = res && res.data;
   if (typeof raw === "string") return JSON.parse(raw);
   return raw;
+};
+
+Comix._fetchHiddenBrowser = async function(url) {
+  return await cinder.fetchBrowser(url, {
+    headers: this._headers({ "X-Cinder-Suppress-Interactive": "1" }),
+  });
 };
 
 Comix._poster = function(manga) {
@@ -255,13 +261,13 @@ Comix.getChapters = async function(mangaId) {
   var hid = this._hidFromId(mangaId);
   var html = "";
   try {
-    var browser = await cinder.fetchBrowser(this._titleUrl(hid));
+    var browser = await this._fetchHiddenBrowser(this._titleUrl(hid));
     html = browser && browser.data ? browser.data : "";
   } catch (e) {
-    cinder.warn("[Comix] Browser chapter load failed: " + e);
+    cinder.warn("[Comix] Hidden chapter load failed: " + e);
   }
   if (!html) {
-    throw new Error("Comix requires browser rendering to load chapters.");
+    throw new Error("Comix requires hidden browser rendering to load chapters, and the hidden render failed.");
   }
 
   var doc = cinder.parseHTML(html);
@@ -280,7 +286,7 @@ Comix.getChapters = async function(mangaId) {
   });
 
   if (chapters.length === 0) {
-    throw new Error("Comix returned no chapters. Open the source in WebView/browser once, then try again.");
+    throw new Error("Comix returned no chapters from the hidden render.");
   }
   return chapters;
 };
@@ -291,12 +297,12 @@ Comix.getPages = async function(chapterId) {
   var url = this._chapterUrl(path);
   var html = "";
   try {
-    var browser = await cinder.fetchBrowser(url);
+    var browser = await this._fetchHiddenBrowser(url);
     html = browser && browser.data ? browser.data : "";
   } catch (e) {
-    cinder.warn("[Comix] Browser page load failed: " + e);
+    cinder.warn("[Comix] Hidden page load failed: " + e);
   }
-  if (!html) throw new Error("Comix requires browser rendering to load pages.");
+  if (!html) throw new Error("Comix requires hidden browser rendering to load pages, and the hidden render failed.");
 
   var doc = cinder.parseHTML(html);
   var imgs = doc.querySelectorAll("img");
