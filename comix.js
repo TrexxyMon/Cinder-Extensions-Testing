@@ -2,7 +2,7 @@ var Comix = {};
 
 Comix.id = "comix";
 Comix.name = "Comix";
-Comix.version = "1.0.1-cinder";
+Comix.version = "1.0.2-cinder";
 Comix.icon = "CX";
 Comix.description = "Read manga, manhwa, and manhua from Comix.";
 Comix.contentType = "manga";
@@ -95,9 +95,15 @@ Comix._apiGet = async function(path, params) {
   return raw;
 };
 
-Comix._fetchHiddenBrowser = async function(url) {
+Comix._fetchHiddenBrowser = async function(url, waitForSelector, maxWaitMs) {
+  var headers = {
+    "X-Cinder-Suppress-Interactive": "1",
+    "X-Cinder-Min-Wait-Ms": "3000",
+    "X-Cinder-Max-Wait-Ms": String(maxWaitMs || 45000),
+  };
+  if (waitForSelector) headers["X-Cinder-Wait-For-Selector"] = waitForSelector;
   return await cinder.fetchBrowser(url, {
-    headers: this._headers({ "X-Cinder-Suppress-Interactive": "1" }),
+    headers: this._headers(headers),
   });
 };
 
@@ -261,7 +267,8 @@ Comix.getChapters = async function(mangaId) {
   var hid = this._hidFromId(mangaId);
   var html = "";
   try {
-    var browser = await this._fetchHiddenBrowser(this._titleUrl(hid));
+    var waitSelector = "a[href*='/title/" + hid + "/'][href*='chapter']";
+    var browser = await this._fetchHiddenBrowser(this._titleUrl(hid), waitSelector, 55000);
     html = browser && browser.data ? browser.data : "";
   } catch (e) {
     cinder.warn("[Comix] Hidden chapter load failed: " + e);
@@ -297,7 +304,7 @@ Comix.getPages = async function(chapterId) {
   var url = this._chapterUrl(path);
   var html = "";
   try {
-    var browser = await this._fetchHiddenBrowser(url);
+    var browser = await this._fetchHiddenBrowser(url, "img[src*='static.comix.to']", 55000);
     html = browser && browser.data ? browser.data : "";
   } catch (e) {
     cinder.warn("[Comix] Hidden page load failed: " + e);
