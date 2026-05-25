@@ -2,7 +2,7 @@ var Comix = {};
 
 Comix.id = "comix";
 Comix.name = "Comix";
-Comix.version = "1.0.2-cinder";
+Comix.version = "1.0.3-cinder";
 Comix.icon = "CX";
 Comix.description = "Read manga, manhwa, and manhua from Comix.";
 Comix.contentType = "manga";
@@ -105,6 +105,59 @@ Comix._fetchHiddenBrowser = async function(url, waitForSelector, maxWaitMs) {
   return await cinder.fetchBrowser(url, {
     headers: this._headers(headers),
   });
+};
+
+Comix._captureBrowserRequest = async function(pageUrl, urlIncludes, maxWaitMs) {
+  if (!cinder.fetchBrowserCaptured) {
+    throw new Error("This Cinder build does not support captured browser requests. Update the app and try again.");
+  }
+  var res = await cinder.fetchBrowserCaptured(pageUrl, {
+    headers: this._headers({
+      "X-Cinder-Suppress-Interactive": "1",
+      "X-Cinder-Capture-Url-Includes": urlIncludes,
+      "X-Cinder-Max-Wait-Ms": String(maxWaitMs || 45000),
+    }),
+  });
+  if (!res || !res.data) throw new Error("No Comix API request was captured.");
+  var captured = typeof res.data === "string" ? JSON.parse(res.data) : res.data;
+  var url = captured && captured.url ? String(captured.url) : "";
+  var body = captured && captured.body ? String(captured.body) : "";
+  var token = "";
+  try {
+    var parsed = new URL(url, this.BASE_URL);
+    token = parsed.searchParams.get("_") || "";
+  } catch (e) {}
+  return {
+    url: url,
+    token: token,
+    json: body ? JSON.parse(body) : null,
+  };
+};
+
+Comix._chapterFromApi = function(mangaSlug, chapter) {
+  if (!chapter) return null;
+  var number = Number(chapter.number || 0);
+  var chapterUrl = chapter.url || "";
+  var path = "";
+  if (chapterUrl.indexOf("/title/") !== -1) {
+    path = chapterUrl.slice(chapterUrl.indexOf("/title/") + 1);
+  } else {
+    path = "title/" + mangaSlug + "/" + chapter.id + "-chapter-" + String(number).replace(/\.0$/, "");
+  }
+  return {
+    id: path,
+    title: "Chapter " + String(number).replace(/\.0$/, "") + (chapter.name ? ": " + chapter.name : ""),
+    chapterNumber: number,
+    scanlator: chapter.group && chapter.group.name ? chapter.group.name : (chapter.isOfficial ? "Official" : undefined),
+  };
+};
+
+Comix._hasNextPage = function(result) {
+  var meta = result && (result.meta || result.pagination);
+  if (!meta) return false;
+  var page = Number(meta.page || 0);
+  var last = Number(meta.actualLastPage || meta.lastPage || 0);
+  return page > 0 && last > 0 && page < last;
 };
 
 Comix._poster = function(manga) {
@@ -265,36 +318,45 @@ Comix._chapterFromLink = function(hid, href, text, index) {
 
 Comix.getChapters = async function(mangaId) {
   var hid = this._hidFromId(mangaId);
-  var html = "";
-  try {
-    var waitSelector = "a[href*='/title/" + hid + "/'][href*='chapter']";
-    var browser = await this._fetchHiddenBrowser(this._titleUrl(hid), waitSelector, 55000);
-    html = browser && browser.data ? browser.data : "";
-  } catch (e) {
-    cinder.warn("[Comix] Hidden chapter load failed: " + e);
-  }
-  if (!html) {
-    throw new Error("Comix requires hidden browser rendering to load chapters, and the hidden render failed.");
+  var capture = await this._captureBrowserRequest(
+    this._titleUrl(hid),
+    "/api/v1/manga/" + hid + "/chapters",
+    55000,
+  );
+  if (!capture.token) throw new Error("Comix chapter API token was not captured.");
+
+  var mangaSlug = hid;
+  var detail = await this.getMangaDetails(hid).catch(function() { return null; });
+  if (detail && detail.id) mangaSlug = detail.id;
+
+  var all = [];
+  var page = 1;
+  while (true) {
+    var json = await this._apiGet("/manga/" + encodeURIComponent(hid) + "/chapters", {
+      page: page,
+      limit: 100,
+      "order[number]": "desc",
+      "_": capture.token,
+    });
+    var result = json && json.result ? json.result : {};
+    var items = result.items || [];
+    all = all.concat(items);
+    if (!this._hasNextPage(result)) break;
+    page++;
+    if (page > 25) break;
   }
 
-  var doc = cinder.parseHTML(html);
-  var anchors = doc.querySelectorAll("a[href*='/title/" + hid + "/']");
+  var seenNumbers = {};
   var chapters = [];
-  var seen = {};
-  for (var i = 0; i < anchors.length; i++) {
-    var chapter = this._chapterFromLink(hid, this._attr(anchors[i], "href"), this._text(anchors[i]), i);
-    if (!chapter || seen[chapter.id]) continue;
-    seen[chapter.id] = true;
+  for (var i = 0; i < all.length; i++) {
+    var chapter = this._chapterFromApi(mangaSlug, all[i]);
+    if (!chapter) continue;
+    var key = String(chapter.chapterNumber);
+    if (seenNumbers[key]) continue;
+    seenNumbers[key] = true;
     chapters.push(chapter);
   }
-
-  chapters.sort(function(a, b) {
-    return (b.chapterNumber || 0) - (a.chapterNumber || 0);
-  });
-
-  if (chapters.length === 0) {
-    throw new Error("Comix returned no chapters from the hidden render.");
-  }
+  if (chapters.length === 0) throw new Error("Comix API returned no chapters.");
   return chapters;
 };
 
@@ -302,34 +364,29 @@ Comix.getPages = async function(chapterId) {
   var path = String(chapterId || "").replace(/^\/+/, "");
   if (!path) throw new Error("Invalid Comix chapter ID.");
   var url = this._chapterUrl(path);
-  var html = "";
-  try {
-    var browser = await this._fetchHiddenBrowser(url, "img[src*='static.comix.to']", 55000);
-    html = browser && browser.data ? browser.data : "";
-  } catch (e) {
-    cinder.warn("[Comix] Hidden page load failed: " + e);
-  }
-  if (!html) throw new Error("Comix requires hidden browser rendering to load pages, and the hidden render failed.");
+  var chapterIdOnly = path.split("/").pop().split("-")[0];
+  if (!chapterIdOnly) throw new Error("Invalid Comix chapter API ID.");
 
-  var doc = cinder.parseHTML(html);
-  var imgs = doc.querySelectorAll("img");
+  var capture = await this._captureBrowserRequest(
+    url,
+    "/api/v1/chapters/" + chapterIdOnly,
+    55000,
+  );
+  var json = capture.json && capture.json.result ? capture.json : await this._apiGet("/chapters/" + encodeURIComponent(chapterIdOnly), {
+    "_": capture.token,
+  });
+  var result = json && json.result ? json.result : {};
+  var pagesData = result.pages || {};
+  var base = String(pagesData.baseUrl || "").replace(/\/+$/, "");
+  var items = pagesData.items || [];
   var pages = [];
-  var seen = {};
-  for (var i = 0; i < imgs.length; i++) {
-    var src = this._attr(imgs[i], "src") || this._attr(imgs[i], "data-src");
-    src = this._absUrl(src);
-    if (!src || seen[src]) continue;
-    if (src.indexOf("static.comix.to") === -1 && !/\.(jpg|jpeg|png|webp)(\?|$)/i.test(src)) continue;
-    seen[src] = true;
-    pages.push({
-      url: src,
-      headers: this._headers({ "Referer": url }),
-    });
+  for (var i = 0; i < items.length; i++) {
+    var image = items[i] && items[i].url ? String(items[i].url) : "";
+    if (!image) continue;
+    var full = /^https?:\/\//i.test(image) ? image : base + "/" + image.replace(/^\/+/, "");
+    pages.push({ url: full, headers: this._headers({ "Referer": url }) });
   }
-
-  if (pages.length === 0) {
-    throw new Error("Comix returned no pages for this chapter.");
-  }
+  if (pages.length === 0) throw new Error("Comix API returned no pages for this chapter.");
   return pages;
 };
 
