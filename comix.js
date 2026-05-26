@@ -2,7 +2,7 @@ var Comix = {};
 
 Comix.id = "comix";
 Comix.name = "Comix";
-Comix.version = "1.0.5-cinder";
+Comix.version = "1.0.6-cinder";
 Comix.icon = "CX";
 Comix.description = "Read manga, manhwa, and manhua from Comix.";
 Comix.contentType = "manga";
@@ -107,7 +107,8 @@ Comix._extractJsonFromHtml = function(raw) {
 Comix._parseJson = function(raw) {
   if (raw && typeof raw === "object") return raw;
   var text = this._extractJsonFromHtml(raw);
-  if (!text || text.charAt(0) === "<") {
+  var first = text ? text.charAt(0) : "";
+  if (!text || (first !== "{" && first !== "[")) {
     throw new Error("Comix returned a Cloudflare/HTML page instead of API JSON.");
   }
   return JSON.parse(text);
