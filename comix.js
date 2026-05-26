@@ -2,7 +2,7 @@ var Comix = {};
 
 Comix.id = "comix";
 Comix.name = "Comix";
-Comix.version = "1.0.3-cinder";
+Comix.version = "1.0.4-cinder";
 Comix.icon = "CX";
 Comix.description = "Read manga, manhwa, and manhua from Comix.";
 Comix.contentType = "manga";
@@ -90,9 +90,47 @@ Comix._apiGet = async function(path, params) {
   });
   var url = this.API_URL + path + (query.length ? "?" + query.join("&") : "");
   var res = await cinder.fetch(url, { headers: this._headers() });
+  return await this._jsonFromResponse(res, url);
+};
+
+Comix._extractJsonFromHtml = function(raw) {
+  var text = String(raw || "").trim();
+  if (!text) return "";
+  if (text.charAt(0) !== "<") return text;
+  var pre = text.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
+  if (pre) return this._decode(pre[1]);
+  var body = text.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  if (body) return this._decode(body[1]);
+  return text;
+};
+
+Comix._parseJson = function(raw) {
+  if (raw && typeof raw === "object") return raw;
+  var text = this._extractJsonFromHtml(raw);
+  if (!text || text.charAt(0) === "<") {
+    throw new Error("Comix returned HTML instead of JSON.");
+  }
+  return JSON.parse(text);
+};
+
+Comix._jsonFromResponse = async function(res, url) {
   var raw = res && res.data;
-  if (typeof raw === "string") return JSON.parse(raw);
-  return raw;
+  try {
+    return this._parseJson(raw);
+  } catch (directErr) {
+    var browser = await cinder.fetchBrowser(url, {
+      headers: this._headers({
+        "X-Cinder-Suppress-Interactive": "1",
+        "X-Cinder-Min-Wait-Ms": "1000",
+        "X-Cinder-Max-Wait-Ms": "45000",
+      }),
+    });
+    try {
+      return this._parseJson(browser && browser.data);
+    } catch (browserErr) {
+      throw new Error("Comix API returned non-JSON content. Direct: " + directErr.message + " Browser: " + browserErr.message);
+    }
+  }
 };
 
 Comix._fetchHiddenBrowser = async function(url, waitForSelector, maxWaitMs) {

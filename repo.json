@@ -1,12 +1,12 @@
 {
-    "version":  "2.1.9",
+    "version":  "2.1.10",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
                        {
                            "id":  "comix",
                            "name":  "Comix",
-                           "version":  "1.0.3-cinder",
+                           "version":  "1.0.4-cinder",
                            "description":  "Read manga, manhwa, and manhua from Comix.",
                            "contentType":  "manga",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/comix.js",
