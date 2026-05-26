@@ -2,7 +2,7 @@ var BBato = {};
 
 BBato.id = "bbato";
 BBato.name = "BBato";
-BBato.version = "1.0.2-cinder";
+BBato.version = "1.0.3-cinder";
 BBato.icon = "BB";
 BBato.description = "Read manga, manhwa, and manhua from BBato.";
 BBato.contentType = "manga";
@@ -16,6 +16,7 @@ BBato.capabilities = {
 };
 
 BBato.BASE_URL = "https://bbato.com";
+BBato._coverCache = {};
 
 BBato._headers = function(extra) {
   var headers = {
@@ -97,7 +98,51 @@ BBato._fetchText = async function(url, headers) {
   return String(res && res.data ? res.data : "");
 };
 
-BBato._parseListItems = function(html) {
+BBato._mimeFromHeaders = function(headers) {
+  var contentType = "";
+  headers = headers || {};
+  Object.keys(headers).some(function(key) {
+    if (String(key).toLowerCase() === "content-type") {
+      contentType = String(headers[key] || "").split(";")[0].trim();
+      return true;
+    }
+    return false;
+  });
+  return /^image\//i.test(contentType) ? contentType : "image/webp";
+};
+
+BBato._coverPayload = async function(url) {
+  if (!url) return { cover: "", coverHeaders: undefined };
+  if (this._coverCache[url]) return this._coverCache[url];
+  var payload = {
+    cover: url,
+    coverHeaders: this._imageHeaders(),
+  };
+
+  // Older Cinder builds do not pass custom image headers to cover renders.
+  // Inline BBato thumbnails as data URIs so covers load without app changes.
+  if (cinder && typeof cinder.fetchBase64 === "function") {
+    try {
+      var res = await cinder.fetchBase64(url, {
+        headers: this._imageHeaders(),
+        timeout: 15000,
+      });
+      if (res && res.status >= 200 && res.status < 300 && res.data) {
+        payload = {
+          cover: "data:" + this._mimeFromHeaders(res.headers) + ";base64," + res.data,
+          coverHeaders: this._imageHeaders(),
+        };
+      }
+    } catch (e) {
+      // Keep the direct URL for newer Cinder builds that honor coverHeaders.
+    }
+  }
+
+  this._coverCache[url] = payload;
+  return payload;
+};
+
+BBato._parseListItems = async function(html) {
   var results = [];
   var seen = {};
   var re = /<div[^>]+class=["'][^"']*\bunit\b[^"']*["'][^>]*>([\s\S]*?)(?=<div[^>]+class=["'][^"']*\bunit\b|<\/main>|<\/section>|$)/gi;
@@ -126,17 +171,17 @@ BBato._parseListItems = function(html) {
 
     var imgTag = (block.match(/<img[\s\S]*?>/i) || [])[0] || "";
     seen[path] = true;
-    var cover = this._imageFromHtml(imgTag);
+    var coverPayload = await this._coverPayload(this._imageFromHtml(imgTag));
     results.push({
       id: path,
       title: title,
-      cover: cover,
-      coverHeaders: cover ? this._imageHeaders() : undefined,
+      cover: coverPayload.cover,
+      coverHeaders: coverPayload.coverHeaders,
       url: href,
       source: this.name,
       format: "manga",
       extra: {
-        coverHeaders: cover ? this._imageHeaders() : undefined,
+        coverHeaders: coverPayload.coverHeaders,
       },
     });
   }
@@ -168,12 +213,12 @@ BBato.search = async function(query, page) {
       id: details.id,
       title: details.title,
       cover: details.cover,
-      coverHeaders: details.cover ? this._imageHeaders() : undefined,
+      coverHeaders: details.coverHeaders,
       url: this._absUrl(details.id),
       source: this.name,
       format: "manga",
       extra: {
-        coverHeaders: details.cover ? this._imageHeaders() : undefined,
+        coverHeaders: details.coverHeaders,
       },
     }];
   }
@@ -181,7 +226,7 @@ BBato.search = async function(query, page) {
   var url = this.BASE_URL + "/filter?keyword=" + encodeURIComponent(q);
   if ((page || 1) > 1) url += "&page=" + encodeURIComponent(String(page));
   var html = await this._fetchText(url);
-  return this._parseListItems(html);
+  return await this._parseListItems(html);
 };
 
 BBato.getDiscoverSections = async function() {
@@ -199,7 +244,7 @@ BBato.getDiscoverItems = async function(sectionId, page) {
     url = this.BASE_URL + ((page || 1) <= 1 ? "/updated" : "/updated/page/" + encodeURIComponent(String(page)));
   }
   var html = await this._fetchText(url);
-  return this._parseListItems(html);
+  return await this._parseListItems(html);
 };
 
 BBato.getMangaDetails = async function(id) {
@@ -214,14 +259,14 @@ BBato.getMangaDetails = async function(id) {
   var description = this._stripTags((html.match(/<div[^>]+class=["'][^"']*\bdescription\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i) || [])[1]);
   var genres = this._metaValue(html, "Genres").split(",").map(function(g) { return g.trim(); }).filter(Boolean);
 
-  var cover = this._imageFromHtml(imgTag);
+  var coverPayload = await this._coverPayload(this._imageFromHtml(imgTag));
   return {
     id: path,
     title: title || this._slugFromId(id),
     author: this._metaValue(html, "Author") || undefined,
     artist: this._metaValue(html, "Artist") || undefined,
-    cover: cover,
-    coverHeaders: cover ? this._imageHeaders() : undefined,
+    cover: coverPayload.cover,
+    coverHeaders: coverPayload.coverHeaders,
     description: description,
     status: this._status(this._metaValue(html, "Status") || this._stripTags((html.match(/<div[^>]+class=["'][^"']*\binfo\b[^"']*["'][\s\S]*?<p[^>]*>([\s\S]*?)<\/p>/i) || [])[1])),
     genres: genres,
