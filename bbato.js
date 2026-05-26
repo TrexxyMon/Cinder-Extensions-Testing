@@ -2,7 +2,7 @@ var BBato = {};
 
 BBato.id = "bbato";
 BBato.name = "BBato";
-BBato.version = "1.0.1-cinder";
+BBato.version = "1.0.2-cinder";
 BBato.icon = "BB";
 BBato.description = "Read manga, manhwa, and manhua from BBato.";
 BBato.contentType = "manga";
@@ -251,6 +251,8 @@ BBato.getChapters = async function(mangaId) {
         ? new Date(Date.parse(item.updated_at)).toISOString()
         : undefined,
     };
+  }).sort(function(a, b) {
+    return a.chapterNumber - b.chapterNumber;
   });
 };
 

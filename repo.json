@@ -1,12 +1,12 @@
 {
-    "version":  "2.1.14",
+    "version":  "2.1.15",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
                        {
                            "id":  "bbato",
                            "name":  "BBato",
-                           "version":  "1.0.1-cinder",
+                           "version":  "1.0.2-cinder",
                            "description":  "Read manga, manhwa, and manhua from BBato.",
                            "contentType":  "manga",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/bbato.js",
