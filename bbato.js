@@ -2,7 +2,7 @@ var BBato = {};
 
 BBato.id = "bbato";
 BBato.name = "BBato";
-BBato.version = "1.0.0-cinder";
+BBato.version = "1.0.1-cinder";
 BBato.icon = "BB";
 BBato.description = "Read manga, manhwa, and manhua from BBato.";
 BBato.contentType = "manga";
@@ -29,6 +29,14 @@ BBato._headers = function(extra) {
     });
   }
   return headers;
+};
+
+BBato._imageHeaders = function() {
+  return {
+    "Referer": this.BASE_URL + "/",
+    "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
+  };
 };
 
 BBato._decode = function(str) {
@@ -118,13 +126,18 @@ BBato._parseListItems = function(html) {
 
     var imgTag = (block.match(/<img[\s\S]*?>/i) || [])[0] || "";
     seen[path] = true;
+    var cover = this._imageFromHtml(imgTag);
     results.push({
       id: path,
       title: title,
-      cover: this._imageFromHtml(imgTag),
+      cover: cover,
+      coverHeaders: cover ? this._imageHeaders() : undefined,
       url: href,
       source: this.name,
       format: "manga",
+      extra: {
+        coverHeaders: cover ? this._imageHeaders() : undefined,
+      },
     });
   }
   return results;
@@ -155,9 +168,13 @@ BBato.search = async function(query, page) {
       id: details.id,
       title: details.title,
       cover: details.cover,
+      coverHeaders: details.cover ? this._imageHeaders() : undefined,
       url: this._absUrl(details.id),
       source: this.name,
       format: "manga",
+      extra: {
+        coverHeaders: details.cover ? this._imageHeaders() : undefined,
+      },
     }];
   }
 
@@ -197,12 +214,14 @@ BBato.getMangaDetails = async function(id) {
   var description = this._stripTags((html.match(/<div[^>]+class=["'][^"']*\bdescription\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i) || [])[1]);
   var genres = this._metaValue(html, "Genres").split(",").map(function(g) { return g.trim(); }).filter(Boolean);
 
+  var cover = this._imageFromHtml(imgTag);
   return {
     id: path,
     title: title || this._slugFromId(id),
     author: this._metaValue(html, "Author") || undefined,
     artist: this._metaValue(html, "Artist") || undefined,
-    cover: this._imageFromHtml(imgTag),
+    cover: cover,
+    coverHeaders: cover ? this._imageHeaders() : undefined,
     description: description,
     status: this._status(this._metaValue(html, "Status") || this._stripTags((html.match(/<div[^>]+class=["'][^"']*\binfo\b[^"']*["'][\s\S]*?<p[^>]*>([\s\S]*?)<\/p>/i) || [])[1])),
     genres: genres,
@@ -249,7 +268,7 @@ BBato.getPages = async function(chapterId) {
     if (!/\/[0-9]+(?:\.[a-z0-9]+)?(?:\?|$)/i.test(src)) continue;
     if (!src || seen[src]) continue;
     seen[src] = true;
-    pages.push({ url: src, headers: this._headers({ "Referer": url }) });
+    pages.push({ url: src, headers: this._imageHeaders() });
   }
   if (pages.length === 0) throw new Error("BBato returned no pages for this chapter.");
   return pages;
