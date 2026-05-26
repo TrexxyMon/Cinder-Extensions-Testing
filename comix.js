@@ -2,7 +2,7 @@ var Comix = {};
 
 Comix.id = "comix";
 Comix.name = "Comix";
-Comix.version = "1.0.4-cinder";
+Comix.version = "1.0.5-cinder";
 Comix.icon = "CX";
 Comix.description = "Read manga, manhwa, and manhua from Comix.";
 Comix.contentType = "manga";
@@ -90,7 +90,7 @@ Comix._apiGet = async function(path, params) {
   });
   var url = this.API_URL + path + (query.length ? "?" + query.join("&") : "");
   var res = await cinder.fetch(url, { headers: this._headers() });
-  return await this._jsonFromResponse(res, url);
+  return this._parseJson(res && res.data);
 };
 
 Comix._extractJsonFromHtml = function(raw) {
@@ -108,29 +108,9 @@ Comix._parseJson = function(raw) {
   if (raw && typeof raw === "object") return raw;
   var text = this._extractJsonFromHtml(raw);
   if (!text || text.charAt(0) === "<") {
-    throw new Error("Comix returned HTML instead of JSON.");
+    throw new Error("Comix returned a Cloudflare/HTML page instead of API JSON.");
   }
   return JSON.parse(text);
-};
-
-Comix._jsonFromResponse = async function(res, url) {
-  var raw = res && res.data;
-  try {
-    return this._parseJson(raw);
-  } catch (directErr) {
-    var browser = await cinder.fetchBrowser(url, {
-      headers: this._headers({
-        "X-Cinder-Suppress-Interactive": "1",
-        "X-Cinder-Min-Wait-Ms": "1000",
-        "X-Cinder-Max-Wait-Ms": "45000",
-      }),
-    });
-    try {
-      return this._parseJson(browser && browser.data);
-    } catch (browserErr) {
-      throw new Error("Comix API returned non-JSON content. Direct: " + directErr.message + " Browser: " + browserErr.message);
-    }
-  }
 };
 
 Comix._fetchHiddenBrowser = async function(url, waitForSelector, maxWaitMs) {
