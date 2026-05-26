@@ -228,7 +228,9 @@ BBato.getChapters = async function(mangaId) {
       id: "/read/" + slug + "/" + item.chapter_slug,
       title: title,
       chapterNumber: numberMatch ? parseFloat(numberMatch[1]) : items.length - index,
-      dateUploaded: item.updated_at ? Date.parse(item.updated_at) || undefined : undefined,
+      dateUploaded: item.updated_at && Date.parse(item.updated_at)
+        ? new Date(Date.parse(item.updated_at)).toISOString()
+        : undefined,
     };
   });
 };
