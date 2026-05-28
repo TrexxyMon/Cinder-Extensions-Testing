@@ -1,8 +1,8 @@
-﻿var GoComics = {};
+var GoComics = {};
 
 GoComics.id = "gocomics";
 GoComics.name = "GoComics";
-GoComics.version = "1.2.3-cinderfix";
+GoComics.version = "1.2.4-cinderfix";
 GoComics.icon = "GC";
 GoComics.description =
   "Read daily comic strips from GoComics.com - patched for Cinder.";
