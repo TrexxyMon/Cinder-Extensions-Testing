@@ -1,4 +1,4 @@
-var GoComics = {};
+﻿var GoComics = {};
 
 GoComics.id = "gocomics";
 GoComics.name = "GoComics";
@@ -6,8 +6,10 @@ GoComics.version = "1.2.3-cinderfix";
 GoComics.icon = "GC";
 GoComics.description =
   "Read daily comic strips from GoComics.com - patched for Cinder.";
-GoComics.contentType = "manga";
+GoComics.contentType = "comics";
 
+GoComics.contentTypes = ["comic"];
+GoComics.contentSubtypes = ["comicStrip"];
 GoComics.capabilities = {
   search: true,
   discover: true,
@@ -685,3 +687,4 @@ GoComics.getSettings = function() {
 };
 
 __cinderExport = GoComics;
+

@@ -1,4 +1,4 @@
-var BBato = {};
+﻿var BBato = {};
 
 BBato.id = "bbato";
 BBato.name = "BBato";
@@ -7,6 +7,8 @@ BBato.icon = "BB";
 BBato.description = "Read manga, manhwa, and manhua from BBato.";
 BBato.contentType = "manga";
 
+BBato.contentTypes = ["manga"];
+BBato.contentSubtypes = ["manga", "manhwa", "manhua"];
 BBato.capabilities = {
   search: true,
   discover: true,
@@ -326,3 +328,4 @@ BBato.getSettings = function() {
 };
 
 __cinderExport = BBato;
+

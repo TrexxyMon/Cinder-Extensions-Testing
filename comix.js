@@ -1,4 +1,4 @@
-var Comix = {};
+﻿var Comix = {};
 
 Comix.id = "comix";
 Comix.name = "Comix";
@@ -7,6 +7,8 @@ Comix.icon = "CX";
 Comix.description = "Read manga, manhwa, and manhua from Comix.";
 Comix.contentType = "manga";
 
+Comix.contentTypes = ["manga"];
+Comix.contentSubtypes = ["manga", "manhwa", "manhua"];
 Comix.capabilities = {
   search: true,
   discover: true,
@@ -427,3 +429,4 @@ Comix.getSettings = function() {
 };
 
 __cinderExport = Comix;
+

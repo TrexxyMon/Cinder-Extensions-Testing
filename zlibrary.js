@@ -1,4 +1,4 @@
-// ─── Z-Library Direct Download Extension v2.1.0 ──────────────────
+﻿// â”€â”€â”€ Z-Library Direct Download Extension v2.1.0 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //
 // Native Z-Library extension. Uses cinder.fetchBrowser (real WebView)
 // to load Z-Library pages, which passes Cloudflare challenges and 
@@ -14,9 +14,10 @@ __cinderExport = {
 	id: "zlibrary-direct",
 	name: "Z-Library (Direct)",
 	version: "2.2.8",
-	icon: "📖",
+	icon: "ðŸ“–",
 	description: "Native Z-Library downloader. Uses WebView session for Cloudflare bypass.",
 	contentType: "books",
+	contentTypes: ["ebook"],
 
 	capabilities: {
 		search: true,
@@ -44,7 +45,7 @@ __cinderExport = {
 		];
 	},
 
-	// ── Internals ──
+	// â”€â”€ Internals â”€â”€
 
 	_DOMAINS: ["zlib.li", "z-lib.gs", "z-library.rs", "singlelogin.re"],
 
@@ -86,7 +87,7 @@ __cinderExport = {
 		throw new Error("Z-Library mirrors are currently unreachable.");
 	},
 
-	// ── Search ──
+	// â”€â”€ Search â”€â”€
 
 	search: async function(query, page) {
 		if (!page) page = 0;
@@ -119,7 +120,7 @@ __cinderExport = {
 		return results;
 	},
 
-	// ── Resolve ──
+	// â”€â”€ Resolve â”€â”€
 
 	resolve: async function(item) {
 		cinder.log("[Z-Lib] Resolving: " + item.title);
@@ -282,6 +283,7 @@ __cinderExport = {
 		};
 	}
 };
+
 
 
 
