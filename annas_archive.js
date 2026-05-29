@@ -1,23 +1,24 @@
-﻿// â”€â”€â”€ Anna's Archive Download Extension v2.0.0 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Anna's Archive Download Extension v2.0.0 ──────────────────
 //
 // Multi-strategy download accelerator for Anna's Archive.
 //
-// Resolution order (fastest â†’ slowest):
-//   1. AA Supporter Key â†’ fast_download (instant, no queue)
-//   2. Library.lol CDN  â†’ direct link from Libgen mirrors (fast CDN)
-//   3. Parallel Mirror Race â†’ start 2-3 slow mirrors simultaneously
-//   4. Sequential Slow Download â†’ classic single-mirror fallback
+// Resolution order (fastest → slowest):
+//   1. AA Supporter Key → fast_download (instant, no queue)
+//   2. Library.lol CDN  → direct link from Libgen mirrors (fast CDN)
+//   3. Parallel Mirror Race → start 2-3 slow mirrors simultaneously
+//   4. Sequential Slow Download → classic single-mirror fallback
 //
 // TorBox integration: always returns debridLink for TorBox users.
 
 __cinderExport = {
 	id: "annas-archive-slow",
 	name: "Anna's Archive",
-	version: "2.1.5",
-	icon: "ðŸ“š",
+	version: "2.1.6",
+	icon: "📚",
 	description: "Fast downloads from Anna's Archive with multiple acceleration strategies.",
 	contentType: "books",
 	contentTypes: ["ebook"],
+	excludeFromDefaultMetadataProviders: true,
 
 	capabilities: {
 		search: true,
@@ -84,7 +85,7 @@ __cinderExport = {
 		];
 	},
 
-	// â”€â”€ Internals â”€â”€
+	// ── Internals ──
 
 	_BASE_DOMAINS: [
 		"annas-archive.gd",
@@ -175,7 +176,7 @@ __cinderExport = {
 		return false;
 	},
 
-	// â”€â”€ Search â”€â”€
+	// ── Search ──
 
 	search: async function(query, page) {
 		if (!page) page = 0;
@@ -218,7 +219,7 @@ __cinderExport = {
 					var rawBlock = resp.data.substring(idx, idx + 4000);
 					var cleanText = rawBlock.replace(/<[^>]+>/g, ' ');
 					
-					var metaLineMatch = cleanText.match(/([^\nÂ·]+Â·[^\nÂ·]+Â·[^\nÂ·]*(?:MB|KB|GB|KiB|MiB)[^\n]*)/i);
+					var metaLineMatch = cleanText.match(/([^\n·]+·[^\n·]+·[^\n·]*(?:MB|KB|GB|KiB|MiB)[^\n]*)/i);
 					var searchTarget = metaLineMatch ? metaLineMatch[1] : cleanText;
 
 					var formatMatch = searchTarget.match(/\b(epub|pdf|mobi|azw3|cbz|cbr|fb2|djvu)\b/i);
@@ -261,9 +262,9 @@ __cinderExport = {
 		return results;
 	},
 
-	// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-	// â”€â”€ Resolve: Multi-Strategy Download Accelerator â”€â”€
-	// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+	// ═══════════════════════════════════════════════════════════
+	// ── Resolve: Multi-Strategy Download Accelerator ──
+	// ═══════════════════════════════════════════════════════════
 
 	resolve: async function(item) {
 		var md5 = item.url || item.id;
@@ -271,12 +272,12 @@ __cinderExport = {
 
 		var debridLink = "https://annas-archive.gl/md5/" + md5;
 
-		// â”€â”€ Strategy 1: AA Supporter Key (fast_download) â”€â”€
+		// ── Strategy 1: AA Supporter Key (fast_download) ──
 		try {
 			var supporterKey = await cinder.secureStore.get("aa_supporter_key");
 			if (supporterKey && supporterKey.trim()) {
 				supporterKey = supporterKey.trim();
-				cinder.log("[AA] ðŸ”‘ Trying fast_download with supporter key...");
+				cinder.log("[AA] 🔑 Trying fast_download with supporter key...");
 				var baseUrl = await this._getBaseUrl();
 
 				var fastUrl = baseUrl + "/fast_download/" + md5 + "/0/2?secret=" + encodeURIComponent(supporterKey);
@@ -285,7 +286,7 @@ __cinderExport = {
 				if (fastResp.status === 200 && fastResp.data && fastResp.data.length > 500) {
 					var downloadUrl = this._extractDownloadUrl(fastResp.data);
 					if (downloadUrl) {
-						cinder.log("[AA] ðŸš€ Fast download resolved: " + downloadUrl.substring(0, 80));
+						cinder.log("[AA] 🚀 Fast download resolved: " + downloadUrl.substring(0, 80));
 						return {
 							url: downloadUrl,
 							headers: {
@@ -301,7 +302,7 @@ __cinderExport = {
 			cinder.warn("[AA] Fast download error: " + fastErr);
 		}
 
-		// â”€â”€ Strategy 2+3: Libgen CDN + Detail Page IN PARALLEL â”€â”€
+		// ── Strategy 2+3: Libgen CDN + Detail Page IN PARALLEL ──
 		// Don't wait for Libgen to fail before loading the detail page.
 		// Fire both at once and use whichever resolves first.
 		var enableLibgen = await cinder.store.get("enable_libgen");
@@ -328,7 +329,7 @@ __cinderExport = {
 		}
 
 		if (libgenResult) {
-			cinder.log("[AA] ðŸš€ Libgen CDN resolved in <4s: " + libgenResult.substring(0, 80));
+			cinder.log("[AA] 🚀 Libgen CDN resolved in <4s: " + libgenResult.substring(0, 80));
 			return {
 				url: libgenResult,
 				headers: {
@@ -338,11 +339,11 @@ __cinderExport = {
 			};
 		}
 
-		// Libgen didn't win the race â€” wait for detail page (it was already loading in parallel)
+		// Libgen didn't win the race — wait for detail page (it was already loading in parallel)
 		cinder.log("[AA] Libgen CDN didn't win race, waiting for detail page...");
 		detailResp = await detailPromise;
 
-		// Meanwhile, Libgen might still finish â€” keep its promise alive
+		// Meanwhile, Libgen might still finish — keep its promise alive
 		// We'll check it again after parsing the detail page
 		var pendingLibgen = libgenPromise;
 
@@ -381,14 +382,14 @@ __cinderExport = {
 		}
 		var orderedLinks = httpsAnchors.concat(copyPaste).concat(waitlist);
 
-		// â”€â”€ Strategy 3: Parallel Mirror Race (REAL first-one-wins) â”€â”€
+		// ── Strategy 3: Parallel Mirror Race (REAL first-one-wins) ──
 		var enableRace = await cinder.store.get("enable_mirror_race");
 		if (enableRace !== "false" && httpsAnchors.length >= 1) {
 			try {
 				cinder.log("[AA] Racing " + httpsAnchors.length + " HTTPS mirrors + pending Libgen...");
 				var raceResult = await this._raceMirrors(httpsAnchors, baseUrl, pendingLibgen);
 				if (raceResult) {
-					cinder.log("[AA] ðŸš€ Race winner: " + raceResult.url.substring(0, 80));
+					cinder.log("[AA] 🚀 Race winner: " + raceResult.url.substring(0, 80));
 					return {
 						url: raceResult.url,
 						headers: {
@@ -402,8 +403,8 @@ __cinderExport = {
 			}
 		}
 
-		// â”€â”€ Strategy 4: Sequential Slow Download (fallback) â”€â”€
-		cinder.log("[AA] ðŸ¢ Sequential fallback with " + orderedLinks.length + " links...");
+		// ── Strategy 4: Sequential Slow Download (fallback) ──
+		cinder.log("[AA] 🐢 Sequential fallback with " + orderedLinks.length + " links...");
 		var lastError = null;
 
 		for (var k = 0; k < Math.min(orderedLinks.length, 4); k++) {
@@ -443,7 +444,7 @@ __cinderExport = {
 				var extMatch = decodedUrl.match(/\.(epub|pdf|fb2|mobi|azw3?|djvu|cbz|cbr|txt)(?:\?|$)/);
 				if (extMatch && this._SUPPORTED_FORMATS.indexOf(extMatch[1]) === -1) continue;
 
-				cinder.log("[AA] âœ… Resolved: " + downloadUrl);
+				cinder.log("[AA] ✅ Resolved: " + downloadUrl);
 				return {
 					url: downloadUrl,
 					headers: {
@@ -460,14 +461,14 @@ __cinderExport = {
 		throw lastError || new Error("Could not resolve download. The book may not have free download mirrors available.");
 	},
 
-	// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-	// â”€â”€ Strategy Helpers â”€â”€
-	// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+	// ═══════════════════════════════════════════════════════════
+	// ── Strategy Helpers ──
+	// ═══════════════════════════════════════════════════════════
 
 	/**
 	 * Strategy 2: Try Libgen CDN using the MD5 hash.
 	 * Returns the direct download URL or null.
-	 * NO PROBE â€” just return the URL; DownloadManager validates during download.
+	 * NO PROBE — just return the URL; DownloadManager validates during download.
 	 */
 	_tryLibgenCDN: async function(md5) {
 		// Library.lol serves as a redirect page with the actual download link
@@ -535,7 +536,7 @@ __cinderExport = {
 			entries.push(
 				pendingLibgen.then(function(libgenUrl) {
 					if (libgenUrl) {
-						cinder.log("[AA] ðŸ† Libgen CDN finished during race!");
+						cinder.log("[AA] 🏆 Libgen CDN finished during race!");
 						return { url: libgenUrl, referer: "https://library.lol/" };
 					}
 					return null;
@@ -543,7 +544,7 @@ __cinderExport = {
 			);
 		}
 
-		// Add mirror entries â€” try fetch first, fetchBrowser as fallback
+		// Add mirror entries — try fetch first, fetchBrowser as fallback
 		for (var i = 0; i < mirrorPaths.length; i++) {
 			(function(path, index) {
 				var slowUrl = path.indexOf("http") === 0 ? path : baseUrl + path;
@@ -578,7 +579,7 @@ __cinderExport = {
 						var extMatch = decoded.match(/\.(epub|pdf|fb2|mobi|azw3?|djvu|cbz|cbr|txt)(?:\?|$)/);
 						if (extMatch && self._SUPPORTED_FORMATS.indexOf(extMatch[1]) === -1) return null;
 
-						cinder.log("[AA] ðŸ† Mirror " + (index + 1) + " won!");
+						cinder.log("[AA] 🏆 Mirror " + (index + 1) + " won!");
 						return { url: downloadUrl, referer: slowUrl };
 					})().catch(function(err) {
 						cinder.warn("[AA] Mirror " + (index + 1) + " failed: " + err);
@@ -611,7 +612,7 @@ __cinderExport = {
 				});
 			});
 
-			// Safety timeout â€” don't wait forever
+			// Safety timeout — don't wait forever
 			setTimeout(function() {
 				if (!settled) {
 					settled = true;
