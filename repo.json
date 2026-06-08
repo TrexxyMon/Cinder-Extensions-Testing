@@ -1,8 +1,26 @@
 {
-    "version":  "2.1.25",
+    "version":  "2.1.26",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
+                       {
+                           "id":  "atsumaru",
+                           "name":  "Atsumaru",
+                           "version":  "0.1.0-cinder",
+                           "description":  "Read manga, manhwa, manhua, and OEL from Atsumaru.",
+                           "contentType":  "manga",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/atsumaru.js",
+                           "minCinderVersion":  "2.0.0",
+                           "contentTypes":  [
+                                                "manga"
+                                            ],
+                           "contentSubtypes":  [
+                                                   "manga",
+                                                   "manhwa",
+                                                   "manhua",
+                                                   "oel"
+                                               ]
+                       },
                        {
                            "id":  "bbato",
                            "name":  "BBato",
