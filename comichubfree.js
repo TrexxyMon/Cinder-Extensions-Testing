@@ -2,7 +2,7 @@ var ComicHubFree = {};
 
 ComicHubFree.id = "comichubfree";
 ComicHubFree.name = "ComicHubFree";
-ComicHubFree.version = "0.1.0-cinder";
+ComicHubFree.version = "0.1.1-cinder";
 ComicHubFree.icon = "CHF";
 ComicHubFree.description = "Read western comics from ComicHubFree.";
 ComicHubFree.contentType = "comics";
@@ -220,6 +220,7 @@ ComicHubFree.getChapters = async function(mangaId) {
   var seen = {};
   var rowRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
   var rowMatch;
+  var sourceIndex = 0;
   while ((rowMatch = rowRe.exec(html)) !== null) {
     var row = rowMatch[1];
     if (row.indexOf("<a") === -1) continue;
@@ -230,17 +231,25 @@ ComicHubFree.getChapters = async function(mangaId) {
     if (!chapterPath || seen[chapterPath]) continue;
     seen[chapterPath] = true;
     var title = this._stripTags(linkMatch[2]) || this._titleFromPath(chapterPath);
+    var chapterNumber = this._numberFromText(title);
     var date = this._stripTags((row.match(/<td[^>]*>\s*([0-9]{1,2}-[A-Za-z]{3}-[0-9]{4})\s*<\/td>/i) || [])[1]);
     chapters.push({
       id: chapterPath,
       title: title,
-      chapterNumber: this._numberFromText(title),
+      chapterNumber: chapterNumber,
       dateUploaded: date || undefined,
+      _sourceIndex: sourceIndex++,
     });
   }
   if (chapters.length === 0) throw new Error("ComicHubFree returned no chapters.");
   return chapters.sort(function(a, b) {
-    return a.chapterNumber - b.chapterNumber;
+    var aNum = a.chapterNumber > 0 ? a.chapterNumber : Number.POSITIVE_INFINITY;
+    var bNum = b.chapterNumber > 0 ? b.chapterNumber : Number.POSITIVE_INFINITY;
+    if (aNum !== bNum) return aNum - bNum;
+    return a._sourceIndex - b._sourceIndex;
+  }).map(function(chapter) {
+    delete chapter._sourceIndex;
+    return chapter;
   });
 };
 
