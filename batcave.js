@@ -2,7 +2,7 @@ var BatCave = {};
 
 BatCave.id = "batcave";
 BatCave.name = "BatCave";
-BatCave.version = "0.1.0-cinder";
+BatCave.version = "0.1.1-cinder";
 BatCave.icon = "BC";
 BatCave.description = "Read western comics from BatCave.";
 BatCave.contentType = "comics";
@@ -108,10 +108,23 @@ BatCave._fetchHtml = async function(url, options) {
   options = options || {};
   var headers = this._browserHeaders(options.browserHeaders);
   var res;
+  if (cinder.log) cinder.log("BatCave fetch:", url, "browser=", !!cinder.fetchBrowser);
   if (cinder.fetchBrowser) {
     res = await cinder.fetchBrowser(url, { headers: headers });
   } else {
     res = await cinder.fetch(url, { headers: this._headers(options.headers) });
+  }
+  if ((!res || res.status !== 200 || !res.data) && cinder.fetch) {
+    if (cinder.warn) cinder.warn("BatCave browser fetch failed, retrying regular fetch:", res && res.status);
+    res = await cinder.fetch(url, { headers: this._headers(options.headers) });
+  }
+  if (cinder.log) {
+    cinder.log(
+      "BatCave response:",
+      res && res.status,
+      "len=" + String((res && res.data) || "").length,
+      "head=" + String((res && res.data) || "").slice(0, 120).replace(/\s+/g, " "),
+    );
   }
   if (!res || res.status !== 200 || !res.data) {
     throw new Error("BatCave request failed for " + url);
@@ -204,10 +217,13 @@ BatCave._parseCards = function(html) {
 
 BatCave.search = async function(query, page) {
   page = page || 0;
-  var url = this.BASE_URL + "/search/" + encodeURIComponent(String(query || "").trim());
+  var safeQuery = String(query || "").trim() || "batman";
+  var url = this.BASE_URL + "/search/" + encodeURIComponent(safeQuery);
   if (page > 0) url += "/page/" + (page + 1) + "/";
   var html = await this._fetchHtml(url);
-  return this._parseCards(html);
+  var items = this._parseCards(html);
+  if (cinder.log) cinder.log("BatCave search results:", items.length, "query=", safeQuery);
+  return items;
 };
 
 BatCave.getDiscoverSections = async function() {
