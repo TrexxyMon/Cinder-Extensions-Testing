@@ -1,8 +1,25 @@
 {
-    "version":  "2.1.27",
+    "version":  "2.1.28",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
+                       {
+                           "id":  "asurascans",
+                           "name":  "Asura Scans",
+                           "version":  "0.1.0-cinder",
+                           "description":  "Read manga, manhwa, and manhua from Asura Scans.",
+                           "contentType":  "manga",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/asurascans.js",
+                           "minCinderVersion":  "2.0.0",
+                           "contentTypes":  [
+                                                "manga"
+                                            ],
+                           "contentSubtypes":  [
+                                                   "manga",
+                                                   "manhwa",
+                                                   "manhua"
+                                               ]
+                       },
                        {
                            "id":  "bbato",
                            "name":  "BBato",
