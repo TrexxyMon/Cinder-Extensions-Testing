@@ -2,7 +2,7 @@ var BatCave = {};
 
 BatCave.id = "batcave";
 BatCave.name = "BatCave";
-BatCave.version = "0.1.5-cinder";
+BatCave.version = "0.1.6-cinder";
 BatCave.icon = "BC";
 BatCave.description = "Read western comics from BatCave.";
 BatCave.contentType = "comics";
@@ -36,10 +36,8 @@ BatCave._headers = function(extra) {
 BatCave._browserHeaders = function(extra) {
   return this._headers(Object.assign({
     "X-Cinder-Suppress-Interactive": "1",
-    "X-Cinder-Visible-Layout": "1",
-    "X-Cinder-Wake-Page": "1",
-    "X-Cinder-Min-Wait-Ms": "1500",
-    "X-Cinder-Max-Wait-Ms": "7000",
+    "X-Cinder-Min-Wait-Ms": "2500",
+    "X-Cinder-Max-Wait-Ms": "12000",
   }, extra || {}));
 };
 
