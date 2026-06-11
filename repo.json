@@ -1,13 +1,13 @@
 {
-    "version":  "2.1.30",
+    "version":  "2.1.31",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
                        {
                            "id":  "oceanofpdf",
                            "name":  "OceanofPDF",
-                           "version":  "0.1.0",
-                           "description":  "OceanofPDF download-source tester. Resolution is disabled in this testing build.",
+                           "version":  "0.1.1",
+                           "description":  "OceanofPDF download-source tester with separate EPUB/PDF results. Resolution is disabled in this testing build.",
                            "contentType":  "books",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/oceanofpdf.js",
                            "minCinderVersion":  "2.0.0",

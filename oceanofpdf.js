@@ -1,9 +1,9 @@
 __cinderExport = {
 	id: "oceanofpdf",
 	name: "OceanofPDF",
-	version: "0.1.0",
+	version: "0.1.1",
 	icon: "OPDF",
-	description: "OceanofPDF download-source tester. Resolution is intentionally disabled in this testing build.",
+	description: "OceanofPDF download-source tester with separate EPUB/PDF results. Resolution is intentionally disabled in this testing build.",
 	contentType: "books",
 	contentTypes: ["ebook"],
 	excludeFromDefaultMetadataProviders: true,
@@ -128,20 +128,27 @@ __cinderExport = {
 				var summary = summaryEl ? this._clean(summaryEl.text()) : "";
 				var formats = this._parseFormatsFromText(summary + " " + article.attr("aria-label"));
 
-				results.push({
-					id: url.replace(/^https?:\/\/[^/]+/i, "").replace(/#.*$/, "") || this._slug(title),
-					title: title,
-					author: author || undefined,
-					cover: cover || undefined,
-					url: url,
-					format: formats.length ? formats.join(", ") : "epub, pdf",
-					source: "OceanofPDF",
-					extra: {
-						genre: genre || undefined,
-						summary: summary || undefined,
-						sourcePageOnly: true,
-					},
-				});
+				var resultFormats = formats.length ? formats : ["epub", "pdf"];
+				var baseId = url.replace(/^https?:\/\/[^/]+/i, "").replace(/#.*$/, "") || this._slug(title);
+				for (var f = 0; f < resultFormats.length; f++) {
+					var format = resultFormats[f];
+					if (format !== "epub" && format !== "pdf") continue;
+					results.push({
+						id: baseId + "#" + format,
+						title: title,
+						author: author || undefined,
+						cover: cover || undefined,
+						url: url,
+						format: format,
+						source: "OceanofPDF",
+						extra: {
+							genre: genre || undefined,
+							summary: summary || undefined,
+							preferredFormat: format,
+							sourcePageOnly: true,
+						},
+					});
+				}
 			} catch (err) {
 				cinder.warn("[OceanofPDF] Failed to parse result article: " + err);
 			}
