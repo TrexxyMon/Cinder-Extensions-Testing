@@ -3,7 +3,7 @@ __cinderExport = {
 	name: "OceanofPDF",
 	version: "0.1.2",
 	icon: "OPDF",
-	description: "OceanofPDF download-source tester with separate EPUB/PDF results. Resolution is intentionally disabled in this testing build.",
+	description: "OceanofPDF download-source tester with separate EPUB/PDF results and POST form downloads.",
 	contentType: "books",
 	contentTypes: ["ebook"],
 	excludeFromDefaultMetadataProviders: true,
@@ -95,6 +95,96 @@ __cinderExport = {
 		return formats;
 	},
 
+	_extractDownloadForms: function(html) {
+		var doc = cinder.parseHTML(html);
+		var forms = doc.querySelectorAll('form[action*="Fetching_Resource.php"]');
+		var results = [];
+
+		for (var i = 0; i < forms.length; i++) {
+			try {
+				var form = forms[i];
+				var endpoint = this._absUrl(form.attr("action") || "");
+				var idInput = form.querySelector('input[name="id"]');
+				var fileInput = form.querySelector('input[name="filename"]');
+				var requestId = this._clean(idInput ? idInput.attr("value") || "" : "");
+				var fileName = this._clean(fileInput ? fileInput.attr("value") || "" : "");
+				if (!endpoint || !requestId || !fileName) continue;
+
+				var format = "";
+				var extMatch = fileName.toLowerCase().match(/\.([a-z0-9]{2,5})(?:\s|$)/);
+				if (extMatch) format = extMatch[1];
+
+				results.push({
+					endpoint: endpoint,
+					requestId: requestId,
+					fileName: fileName,
+					format: format,
+				});
+			} catch (err) {
+				cinder.warn("[OceanofPDF] Failed to parse download form: " + err);
+			}
+		}
+
+		return results;
+	},
+
+	_pickDownloadForm: function(forms, preferredFormat) {
+		if (!forms || !forms.length) return null;
+		var normalized = this._clean(preferredFormat).toLowerCase();
+		var hasTaggedFormats = false;
+		for (var i = 0; i < forms.length; i++) {
+			if (forms[i].format) hasTaggedFormats = true;
+			if (forms[i].format === normalized) return forms[i];
+		}
+		if (normalized && hasTaggedFormats) return null;
+		return forms[0];
+	},
+
+	_extractDownloadForms: function(html) {
+		var doc = cinder.parseHTML(html);
+		var forms = doc.querySelectorAll('form[action*="Fetching_Resource.php"]');
+		var results = [];
+
+		for (var i = 0; i < forms.length; i++) {
+			try {
+				var form = forms[i];
+				var endpoint = this._absUrl(form.attr("action") || "");
+				var idInput = form.querySelector('input[name="id"]');
+				var fileInput = form.querySelector('input[name="filename"]');
+				var requestId = this._clean(idInput ? idInput.attr("value") || "" : "");
+				var fileName = this._clean(fileInput ? fileInput.attr("value") || "" : "");
+				if (!endpoint || !requestId || !fileName) continue;
+
+				var format = "";
+				var extMatch = fileName.toLowerCase().match(/\.([a-z0-9]{2,5})(?:\s|$)/);
+				if (extMatch) format = extMatch[1];
+
+				results.push({
+					endpoint: endpoint,
+					requestId: requestId,
+					fileName: fileName,
+					format: format,
+				});
+			} catch (err) {
+				cinder.warn("[OceanofPDF] Failed to parse download form: " + err);
+			}
+		}
+
+		return results;
+	},
+
+	_pickDownloadForm: function(forms, preferredFormat) {
+		if (!forms || !forms.length) return null;
+		var normalized = this._clean(preferredFormat).toLowerCase();
+		var hasTaggedFormats = false;
+		for (var i = 0; i < forms.length; i++) {
+			if (forms[i].format) hasTaggedFormats = true;
+			if (forms[i].format === normalized) return forms[i];
+		}
+		if (normalized && hasTaggedFormats) return null;
+		return forms[0];
+	},
+
 	_parseResultArticles: function(html) {
 		var doc = cinder.parseHTML(html);
 		var articles = doc.querySelectorAll("main#genesis-content article.entry");
@@ -167,70 +257,48 @@ __cinderExport = {
 		if (!this._isUsableHtml(resp)) return [];
 		return this._parseResultArticles(resp.data).slice(0, 50);
 	},
-	
- resolve: async function(item) {
-	var detailResp = await this._fetchPage(item.url);
-	if (!this._isUsableHtml(detailResp)) {
-		throw new Error("Could not load detail page.");
-	}
 
-	var doc = cinder.parseHTML(detailResp.data);
-	var preferredFormat =
-		String(item.format || item.extra?.preferredFormat || "epub").toLowerCase();
+	resolve: async function(item) {
+		var preferredFormat =
+			String(item.format || item.extra?.preferredFormat || "epub").toLowerCase();
+		if (!item?.url) throw new Error("OceanofPDF item is missing a source page URL.");
 
-	var forms = doc.querySelectorAll("form[action]");
-	var chosen = null;
-
-	for (var i = 0; i < forms.length; i++) {
-		var form = forms[i];
-		var action = this._absUrl(form.attr("action") || "");
-		if (!action) continue;
-
-		var idInput = form.querySelector('input[name="id"]');
-		var filenameInput = form.querySelector('input[name="filename"]');
-
-		var requestId = idInput ? this._clean(idInput.attr("value") || "") : "";
-		var filename = filenameInput
-			? this._clean(filenameInput.attr("value") || "")
-			: "";
-
-		if (!requestId || !filename) continue;
-
-		var lowerFilename = filename.toLowerCase();
-		if (
-			(preferredFormat === "epub" && lowerFilename.endsWith(".epub")) ||
-			(preferredFormat === "pdf" && lowerFilename.endsWith(".pdf"))
-		) {
-			chosen = {
-				action: action,
-				requestId: requestId,
-				filename: filename,
-			};
-			break;
-		}
-	}
-
-	if (!chosen) {
-		throw new Error(
-			"No " + preferredFormat.toUpperCase() + " download form found.",
-		);
-	}
-
-	return {
-		url: chosen.action,
-		fileName: chosen.filename,
-		headers: {
-			Referer: item.url,
-		},
-		downloadRequest: {
-			method: "POST",
-			bodyEncoding: "form",
-			body: {
-				id: chosen.requestId,
-				filename: chosen.filename,
+		var resp = await cinder.fetchBrowser(item.url, {
+			headers: {
+				"X-Cinder-Suppress-Interactive": "1",
 			},
-			useBrowser: true,
-		},
-	};
+			timeout: 60000,
+		});
+		if (!this._isUsableHtml(resp)) {
+			resp = await this._fetchPage(item.url);
+		}
+		if (!this._isUsableHtml(resp)) {
+			throw new Error("OceanofPDF detail page could not be loaded.");
+		}
+
+		var forms = this._extractDownloadForms(resp.data || "");
+		var selected = this._pickDownloadForm(forms, preferredFormat);
+		if (!selected) {
+			throw new Error("OceanofPDF download form was not found on the detail page.");
+		}
+
+		return {
+			url: selected.endpoint,
+			fileName: selected.fileName,
+			headers: item.url
+				? {
+					Referer: item.url,
+				}
+				: undefined,
+			downloadRequest: {
+				method: "POST",
+				bodyEncoding: "form",
+				body: {
+					id: selected.requestId,
+					filename: selected.fileName,
+				},
+				useBrowser: true,
+			},
+		};
+	},
 };
-	
