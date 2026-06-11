@@ -1,7 +1,7 @@
 __cinderExport = {
 	id: "oceanofpdf",
 	name: "OceanofPDF",
-	version: "0.1.2",
+	version: "0.1.3",
 	icon: "OPDF",
 	description: "OceanofPDF download-source tester with separate EPUB/PDF results and POST form downloads.",
 	contentType: "books",
@@ -288,6 +288,7 @@ __cinderExport = {
 			headers: item.url
 				? {
 					Referer: item.url,
+					"X-Cinder-Expect-Interstitial": "1",
 				}
 				: undefined,
 			downloadRequest: {
