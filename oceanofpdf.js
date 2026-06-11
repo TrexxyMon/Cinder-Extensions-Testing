@@ -167,6 +167,7 @@ __cinderExport = {
 		if (!this._isUsableHtml(resp)) return [];
 		return this._parseResultArticles(resp.data).slice(0, 50);
 	},
+	
  resolve: async function(item) {
 	var detailResp = await this._fetchPage(item.url);
 	if (!this._isUsableHtml(detailResp)) {
