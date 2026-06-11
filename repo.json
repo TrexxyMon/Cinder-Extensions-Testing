@@ -6,7 +6,7 @@
                        {
                            "id":  "oceanofpdf",
                            "name":  "OceanofPDF",
-                           "version":  "0.1.1",
+                           "version":  "0.1.2",
                            "description":  "OceanofPDF download-source tester with separate EPUB/PDF results. Resolution is disabled in this testing build.",
                            "contentType":  "books",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/oceanofpdf.js",
