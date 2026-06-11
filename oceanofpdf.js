@@ -1,7 +1,7 @@
 __cinderExport = {
 	id: "oceanofpdf",
 	name: "OceanofPDF",
-	version: "0.1.1",
+	version: "0.1.2",
 	icon: "OPDF",
 	description: "OceanofPDF download-source tester with separate EPUB/PDF results. Resolution is intentionally disabled in this testing build.",
 	contentType: "books",
