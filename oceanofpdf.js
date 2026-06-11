@@ -232,5 +232,5 @@ __cinderExport = {
 			useBrowser: true,
 		},
 	};
-}
+};
 	
