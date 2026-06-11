@@ -167,8 +167,69 @@ __cinderExport = {
 		if (!this._isUsableHtml(resp)) return [];
 		return this._parseResultArticles(resp.data).slice(0, 50);
 	},
+resolve: async function(item) {
+	var detailResp = await this._fetchPage(item.url);
+	if (!this._isUsableHtml(detailResp)) {
+		throw new Error("Could not load detail page.");
+	}
 
-	resolve: async function() {
-		throw new Error("OceanofPDF direct download resolution is disabled in this testing build.");
-	},
-};
+	var doc = cinder.parseHTML(detailResp.data);
+	var preferredFormat =
+		String(item.format || item.extra?.preferredFormat || "epub").toLowerCase();
+
+	var forms = doc.querySelectorAll("form[action]");
+	var chosen = null;
+
+	for (var i = 0; i < forms.length; i++) {
+		var form = forms[i];
+		var action = this._absUrl(form.attr("action") || "");
+		if (!action) continue;
+
+		var idInput = form.querySelector('input[name="id"]');
+		var filenameInput = form.querySelector('input[name="filename"]');
+
+		var requestId = idInput ? this._clean(idInput.attr("value") || "") : "";
+		var filename = filenameInput
+			? this._clean(filenameInput.attr("value") || "")
+			: "";
+
+		if (!requestId || !filename) continue;
+
+		var lowerFilename = filename.toLowerCase();
+		if (
+			(preferredFormat === "epub" && lowerFilename.endsWith(".epub")) ||
+			(preferredFormat === "pdf" && lowerFilename.endsWith(".pdf"))
+		) {
+			chosen = {
+				action: action,
+				requestId: requestId,
+				filename: filename,
+			};
+			break;
+		}
+	}
+
+	if (!chosen) {
+		throw new Error(
+			"No " + preferredFormat.toUpperCase() + " download form found.",
+		);
+	}
+
+	return {
+		url: chosen.action,
+		fileName: chosen.filename,
+		headers: {
+			Referer: item.url,
+		},
+		downloadRequest: {
+			method: "POST",
+			bodyEncoding: "form",
+			body: {
+				id: chosen.requestId,
+				filename: chosen.filename,
+			},
+			useBrowser: true,
+		},
+	};
+}
+	
