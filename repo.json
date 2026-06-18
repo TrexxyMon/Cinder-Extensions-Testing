@@ -1,5 +1,5 @@
 {
-    "version":  "2.1.31",
+    "version":  "2.1.32",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
@@ -49,19 +49,6 @@
                                                    "manhwa",
                                                    "manhua"
                                                ]
-                       },
-                       {
-                           "id":  "annas-archive-slow",
-                           "name":  "Anna\u0027s Archive",
-                           "version":  "2.1.6",
-                           "description":  "Fast downloads from Anna\u0027s Archive with multiple acceleration strategies.",
-                           "contentType":  "books",
-                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/annas_archive.js",
-                           "minCinderVersion":  "1.0.0",
-                           "contentTypes":  [
-                                                "ebook"
-                                            ],
-                           "excludeFromDefaultMetadataProviders":  true
                        },
                        {
                            "id":  "zlibrary-direct",
@@ -123,3 +110,4 @@
                        }
                    ]
 }
+

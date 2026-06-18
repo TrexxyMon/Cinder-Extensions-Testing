@@ -15,7 +15,7 @@ https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/repo.
 ## Available Extensions
 - **OceanofPDF**: Download-source tester for OceanofPDF search result parsing with separate EPUB/PDF results and POST form downloads.
 - **Z-Library (Direct)**: Scrapes Z-Library mirrors with IP rotation and Cloudflare bypass.
-- **Anna's Archive**: Fast downloads from Anna's Archive with multiple acceleration strategies.
 
 ## Disclaimer
 These extensions are for testing purposes only. Please respect copyright laws and the terms of service of the respective providers.
+
