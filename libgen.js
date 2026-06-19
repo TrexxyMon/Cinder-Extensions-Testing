@@ -1,7 +1,7 @@
 __cinderExport = {
 	id: "libgen",
 	name: "LibGen",
-	version: "0.1.1",
+	version: "0.1.2",
 	icon: "LG",
 	description: "Direct download-source extension for LibGen.",
 	contentType: "books",
@@ -219,6 +219,40 @@ __cinderExport = {
 		);
 	},
 
+	_isKeyedDownloadUrl: function(url) {
+		var lower = String(url || "").toLowerCase();
+		return lower.indexOf("get.php") !== -1 &&
+			lower.indexOf("md5=") !== -1 &&
+			lower.indexOf("key=") !== -1;
+	},
+
+	_decodeUrlText: function(value) {
+		return String(value || "")
+			.replace(/&amp;/gi, "&")
+			.replace(/&#38;/g, "&")
+			.replace(/\\u0026/gi, "&")
+			.trim();
+	},
+
+	_extractKeyedDownloadUrl: function(html, baseUrl, expectedMd5) {
+		var normalizedHtml = this._decodeUrlText(html);
+		var matches = normalizedHtml.match(/(?:https?:\/\/|\/\/|\/)?[^"'<>\\\s]*get\.php\?[^"'<>\\\s]+/ig) || [];
+		var expected = this._clean(expectedMd5 || "").toLowerCase();
+		var seen = {};
+
+		for (var i = 0; i < matches.length; i++) {
+			var candidate = this._decodeUrlText(matches[i]);
+			if (!candidate || seen[candidate]) continue;
+			seen[candidate] = true;
+			if (!this._isKeyedDownloadUrl(candidate)) continue;
+			var candidateMd5 = this._md5FromUrl(candidate).toLowerCase();
+			if (expected && candidateMd5 && candidateMd5 !== expected) continue;
+			return this._absUrl(baseUrl, candidate);
+		}
+
+		return "";
+	},
+
 	_resolvedDownload: function(item, url, referer, useBrowser) {
 		var headers = referer ? { Referer: referer } : undefined;
 		if (useBrowser) {
@@ -231,6 +265,24 @@ __cinderExport = {
 			headers: headers,
 			downloadRequest: useBrowser ? { method: "GET", useBrowser: true } : undefined,
 		};
+	},
+
+	_resolveHtmlDownloadPage: async function(item, pageUrl, referer, md5) {
+		var baseUrl = await this._getBaseUrl();
+		var html = await this._fetchHtml(pageUrl);
+		var keyedUrl = this._extractKeyedDownloadUrl(html, baseUrl, md5 || this._md5FromUrl(pageUrl));
+		if (keyedUrl) {
+			return this._resolvedDownload(item, keyedUrl, pageUrl, false);
+		}
+
+		var doc = cinder.parseHTML(html);
+		var formDownload = await this._extractFormDownload(doc, pageUrl, baseUrl);
+		if (formDownload) {
+			formDownload.fileName = this._clean(item.title || "download") + "." + (item.format || "epub");
+			return formDownload;
+		}
+
+		return this._resolvedDownload(item, pageUrl, referer, true);
 	},
 
 	_placeholderDetailUrl: async function(id, format) {
@@ -446,6 +498,14 @@ __cinderExport = {
 			);
 		}
 		if (directUrl) {
+			if (this._isHtmlDownloadPageUrl(directUrl)) {
+				return await this._resolveHtmlDownloadPage(
+					item,
+					directUrl,
+					item.url,
+					this._clean(item && item.extra ? item.extra.md5 : "") || this._md5FromUrl(directUrl),
+				);
+			}
 			return this._resolvedDownload(item, directUrl, item.url, this._isHtmlDownloadPageUrl(directUrl));
 		}
 
@@ -473,6 +533,14 @@ __cinderExport = {
 			);
 		}
 		if (href) {
+			if (this._isHtmlDownloadPageUrl(href)) {
+				return await this._resolveHtmlDownloadPage(
+					item,
+					href,
+					pageUrl,
+					this._clean(item && item.extra ? item.extra.md5 : "") || this._md5FromUrl(href),
+				);
+			}
 			return this._resolvedDownload(item, href, pageUrl, this._isHtmlDownloadPageUrl(href));
 		}
 
