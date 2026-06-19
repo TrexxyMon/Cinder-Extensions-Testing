@@ -7,7 +7,8 @@ __cinderExport = {
 	contentType: "books",
 	contentTypes: ["ebook"],
 	excludeFromDefaultMetadataProviders: true,
-	_DEFAULT_SEARCH_PATH: "libgen.li/index.php?req={query}&columns%5B%5D=t&columns%5B%5D=a&columns%5B%5D=s&columns%5B%5D=y&columns%5B%5D=p&columns%5B%5D=i&objects%5B%5D=f&objects%5B%5D=e&objects%5B%5D=s&objects%5B%5D=a&objects%5B%5D=p&objects%5B%5D=w&topics%5B%5D=l&topics%5B%5D=c&topics%5B%5D=f&topics%5B%5D=a&topics%5B%5D=m&topics%5B%5D=r&topics%5B%5D=s&res=25&filesuns=all{pageParam}",
+	_DEFAULT_BASE_URL: "https://libgen.li",
+	_DEFAULT_SEARCH_PATH: "/index.php?req={query}&columns%5B%5D=t&columns%5B%5D=a&columns%5B%5D=s&columns%5B%5D=y&columns%5B%5D=p&columns%5B%5D=i&objects%5B%5D=f&objects%5B%5D=e&objects%5B%5D=s&objects%5B%5D=a&objects%5B%5D=p&objects%5B%5D=w&topics%5B%5D=l&topics%5B%5D=c&topics%5B%5D=f&topics%5B%5D=a&topics%5B%5D=m&topics%5B%5D=r&topics%5B%5D=s&res=25&filesuns=all{pageParam}",
 	_DEFAULT_DETAIL_TEMPLATE: "https://libgen.li/edition.php?id={id}",
 	_DEFAULT_DOWNLOAD_TEMPLATE: "https://libgen.li/file.php?id={id}",
 	_DEFAULT_MD5_DOWNLOAD_TEMPLATE: "https://libgen.li/ads.php?md5={md5}",
@@ -27,8 +28,8 @@ __cinderExport = {
 				id: "base_url",
 				label: "Base URL",
 				type: "text",
-				defaultValue: "https://libgen.li",
-				placeholder: "https://libgen.li",
+				defaultValue: this._DEFAULT_BASE_URL,
+				placeholder: this._DEFAULT_BASE_URL,
 			},
 			{
 				id: "search_path",
@@ -103,7 +104,7 @@ __cinderExport = {
 	},
 
 	_getBaseUrl: async function() {
-		return (await this._getSetting("base_url", "https://example.invalid")).replace(/\/+$/, "");
+		return (await this._getSetting("base_url", this._DEFAULT_BASE_URL)).replace(/\/+$/, "");
 	},
 
 	_fetchHtml: async function(url) {
@@ -116,7 +117,11 @@ __cinderExport = {
 			timeout: 30000,
 		});
 		if (!resp || resp.status < 200 || resp.status >= 400) {
-			throw new Error("Fixture request failed with status " + (resp ? resp.status : "unknown"));
+			var status = resp ? resp.status : "unknown";
+			var prefix = status === 0
+				? "Fixture request failed before receiving an HTTP response"
+				: "Fixture request failed with status " + status;
+			throw new Error(prefix + ": " + url);
 		}
 		return resp.data || "";
 	},
