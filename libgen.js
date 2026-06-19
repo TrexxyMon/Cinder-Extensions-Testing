@@ -1,7 +1,7 @@
 __cinderExport = {
 	id: "libgen",
 	name: "LibGen",
-	version: "0.1.2",
+	version: "0.1.3",
 	icon: "LG",
 	description: "Direct download-source extension for LibGen.",
 	contentType: "books",
@@ -253,6 +253,25 @@ __cinderExport = {
 		return "";
 	},
 
+	_extractHtmlDownloadPageUrl: function(html, baseUrl, expectedMd5) {
+		var normalizedHtml = this._decodeUrlText(html);
+		var matches = normalizedHtml.match(/(?:https?:\/\/|\/\/|\/)?[^"'<>\\\s]*(?:ads|file|edition)\.php\?[^"'<>\\\s]+/ig) || [];
+		var expected = this._clean(expectedMd5 || "").toLowerCase();
+		var seen = {};
+
+		for (var i = 0; i < matches.length; i++) {
+			var candidate = this._decodeUrlText(matches[i]);
+			if (!candidate || seen[candidate]) continue;
+			seen[candidate] = true;
+			if (!this._isHtmlDownloadPageUrl(candidate)) continue;
+			var candidateMd5 = this._md5FromUrl(candidate).toLowerCase();
+			if (expected && candidateMd5 && candidateMd5 !== expected) continue;
+			return this._absUrl(baseUrl, candidate);
+		}
+
+		return "";
+	},
+
 	_resolvedDownload: function(item, url, referer, useBrowser) {
 		var headers = referer ? { Referer: referer } : undefined;
 		if (useBrowser) {
@@ -273,6 +292,16 @@ __cinderExport = {
 		var keyedUrl = this._extractKeyedDownloadUrl(html, baseUrl, md5 || this._md5FromUrl(pageUrl));
 		if (keyedUrl) {
 			return this._resolvedDownload(item, keyedUrl, pageUrl, false);
+		}
+
+		var nestedDownloadPage = this._extractHtmlDownloadPageUrl(html, baseUrl, md5 || this._md5FromUrl(pageUrl));
+		if (nestedDownloadPage && nestedDownloadPage !== pageUrl) {
+			return await this._resolveHtmlDownloadPage(
+				item,
+				nestedDownloadPage,
+				pageUrl,
+				md5 || this._md5FromUrl(nestedDownloadPage),
+			);
 		}
 
 		var doc = cinder.parseHTML(html);
@@ -514,6 +543,20 @@ __cinderExport = {
 
 		cinder.log("[LibGen] Resolve: " + pageUrl);
 		var html = await this._fetchHtml(pageUrl);
+		var nestedDownloadPage = this._extractHtmlDownloadPageUrl(
+			html,
+			baseUrl,
+			this._clean(item && item.extra ? item.extra.md5 : "") || this._md5FromUrl(pageUrl),
+		);
+		if (nestedDownloadPage && nestedDownloadPage !== pageUrl) {
+			return await this._resolveHtmlDownloadPage(
+				item,
+				nestedDownloadPage,
+				pageUrl,
+				this._clean(item && item.extra ? item.extra.md5 : "") || this._md5FromUrl(nestedDownloadPage),
+			);
+		}
+
 		var doc = cinder.parseHTML(html);
 		var selector = await this._getSetting(
 			"direct_link_selector",
