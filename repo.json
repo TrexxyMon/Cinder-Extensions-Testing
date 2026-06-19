@@ -17,12 +17,12 @@
                            "excludeFromDefaultMetadataProviders":  true
                        },
                        {
-                           "id":  "generic-direct-fixture",
-                           "name":  "Generic Direct Fixture",
+                           "id":  "libgen",
+                           "name":  "LibGen",
                            "version":  "0.1.0",
-                           "description":  "Configurable placeholder download-source extension for controlled resolver experiments.",
+                           "description":  "Direct download-source extension for LibGen.",
                            "contentType":  "books",
-                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/generic_direct_fixture.js",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/libgen.js",
                            "minCinderVersion":  "2.0.0",
                            "contentTypes":  [
                                                 "ebook"
