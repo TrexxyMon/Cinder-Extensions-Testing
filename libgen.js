@@ -1,7 +1,7 @@
 __cinderExport = {
 	id: "libgen",
 	name: "LibGen",
-	version: "0.1.0",
+	version: "0.1.1",
 	icon: "LG",
 	description: "Direct download-source extension for LibGen.",
 	contentType: "books",
@@ -203,13 +203,34 @@ __cinderExport = {
 		var lower = String(url || "").toLowerCase();
 		return (
 			lower.indexOf(".onion") !== -1 ||
-			lower.indexOf("?md5=") !== -1 ||
-			lower.indexOf("&md5=") !== -1 ||
 			lower.indexOf("/torrents/") !== -1 ||
 			lower.indexOf("/nzb/") !== -1 ||
 			lower.indexOf("dbdumps") !== -1 ||
 			lower.indexOf("/md5/") !== -1
 		);
+	},
+
+	_isHtmlDownloadPageUrl: function(url) {
+		var lower = String(url || "").toLowerCase();
+		return (
+			lower.indexOf("/ads.php") !== -1 ||
+			lower.indexOf("/file.php") !== -1 ||
+			lower.indexOf("/edition.php") !== -1
+		);
+	},
+
+	_resolvedDownload: function(item, url, referer, useBrowser) {
+		var headers = referer ? { Referer: referer } : undefined;
+		if (useBrowser) {
+			headers = headers || {};
+			headers["X-Cinder-Expect-Interstitial"] = "1";
+		}
+		return {
+			url: url,
+			fileName: this._clean(item.title || "download") + "." + (item.format || "epub"),
+			headers: headers,
+			downloadRequest: useBrowser ? { method: "GET", useBrowser: true } : undefined,
+		};
 	},
 
 	_placeholderDetailUrl: async function(id, format) {
@@ -425,11 +446,7 @@ __cinderExport = {
 			);
 		}
 		if (directUrl) {
-			return {
-				url: directUrl,
-				fileName: this._clean(item.title || "download") + "." + (item.format || "epub"),
-				headers: item.url ? { Referer: item.url } : undefined,
-			};
+			return this._resolvedDownload(item, directUrl, item.url, this._isHtmlDownloadPageUrl(directUrl));
 		}
 
 		var pageUrl = this._absUrl(baseUrl, item.url || (item.extra ? item.extra.detailUrl : ""));
@@ -456,11 +473,7 @@ __cinderExport = {
 			);
 		}
 		if (href) {
-			return {
-				url: href,
-				fileName: this._clean(item.title || "download") + "." + (item.format || this._detectFormat(href)),
-				headers: { Referer: pageUrl },
-			};
+			return this._resolvedDownload(item, href, pageUrl, this._isHtmlDownloadPageUrl(href));
 		}
 
 		var formDownload = await this._extractFormDownload(doc, pageUrl, baseUrl);
