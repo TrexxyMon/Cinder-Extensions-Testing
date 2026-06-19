@@ -27,8 +27,8 @@ __cinderExport = {
 				id: "base_url",
 				label: "Base URL",
 				type: "text",
-				defaultValue: "https://libgen.li",
-				placeholder: "https://example.invalid",
+				defaultValue: "https://libgen.li/",
+				placeholder: "https://libgen.li/",
 			},
 			{
 				id: "search_path",
