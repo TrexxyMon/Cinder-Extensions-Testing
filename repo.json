@@ -17,19 +17,6 @@
                            "excludeFromDefaultMetadataProviders":  true
                        },
                        {
-                           "id":  "libgen",
-                           "name":  "LibGen",
-                           "version":  "0.1.3",
-                           "description":  "Direct download-source extension for LibGen.",
-                           "contentType":  "books",
-                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/libgen.js",
-                           "minCinderVersion":  "2.0.0",
-                           "contentTypes":  [
-                                                "ebook"
-                                            ],
-                           "excludeFromDefaultMetadataProviders":  true
-                       },
-                       {
                            "id":  "bbato",
                            "name":  "BBato",
                            "version":  "1.0.3-cinder",
@@ -123,4 +110,3 @@
                        }
                    ]
 }
-
