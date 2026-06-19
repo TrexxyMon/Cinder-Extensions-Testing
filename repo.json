@@ -1,5 +1,5 @@
 {
-    "version":  "2.1.32",
+    "version":  "2.1.33",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
@@ -10,6 +10,19 @@
                            "description":  "OceanofPDF download-source tester with separate EPUB/PDF results and POST form downloads.",
                            "contentType":  "books",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/oceanofpdf.js",
+                           "minCinderVersion":  "2.0.0",
+                           "contentTypes":  [
+                                                "ebook"
+                                            ],
+                           "excludeFromDefaultMetadataProviders":  true
+                       },
+                       {
+                           "id":  "generic-direct-fixture",
+                           "name":  "Generic Direct Fixture",
+                           "version":  "0.1.0",
+                           "description":  "Configurable placeholder download-source extension for controlled resolver experiments.",
+                           "contentType":  "books",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/generic_direct_fixture.js",
                            "minCinderVersion":  "2.0.0",
                            "contentTypes":  [
                                                 "ebook"
