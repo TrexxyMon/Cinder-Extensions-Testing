@@ -1,16 +1,16 @@
 __cinderExport = {
-	id: "generic-direct-fixture",
-	name: "Generic Direct Fixture",
+	id: "libgen",
+	name: "LibGen",
 	version: "0.1.0",
-	icon: "GDF",
-	description: "Configurable placeholder download-source extension for controlled resolver experiments.",
+	icon: "LG",
+	description: "Direct download-source extension for LibGen.",
 	contentType: "books",
 	contentTypes: ["ebook"],
 	excludeFromDefaultMetadataProviders: true,
-	_DEFAULT_SEARCH_PATH: "/index.php?req={query}&columns%5B%5D=t&columns%5B%5D=a&columns%5B%5D=s&columns%5B%5D=y&columns%5B%5D=p&columns%5B%5D=i&objects%5B%5D=f&objects%5B%5D=e&objects%5B%5D=s&objects%5B%5D=a&objects%5B%5D=p&objects%5B%5D=w&topics%5B%5D=l&topics%5B%5D=c&topics%5B%5D=f&topics%5B%5D=a&topics%5B%5D=m&topics%5B%5D=r&topics%5B%5D=s&res=25&filesuns=all{pageParam}",
-	_DEFAULT_DETAIL_TEMPLATE: "https://placeholder.url/edition.php?id={id}",
-	_DEFAULT_DOWNLOAD_TEMPLATE: "https://placeholder.url/file.php?id={id}",
-	_DEFAULT_MD5_DOWNLOAD_TEMPLATE: "https://placeholder.url/ads.php?md5={md5}",
+	_DEFAULT_SEARCH_PATH: "libgen.li/index.php?req={query}&columns%5B%5D=t&columns%5B%5D=a&columns%5B%5D=s&columns%5B%5D=y&columns%5B%5D=p&columns%5B%5D=i&objects%5B%5D=f&objects%5B%5D=e&objects%5B%5D=s&objects%5B%5D=a&objects%5B%5D=p&objects%5B%5D=w&topics%5B%5D=l&topics%5B%5D=c&topics%5B%5D=f&topics%5B%5D=a&topics%5B%5D=m&topics%5B%5D=r&topics%5B%5D=s&res=25&filesuns=all{pageParam}",
+	_DEFAULT_DETAIL_TEMPLATE: "https://libgen.li/edition.php?id={id}",
+	_DEFAULT_DOWNLOAD_TEMPLATE: "https://libgen.li/file.php?id={id}",
+	_DEFAULT_MD5_DOWNLOAD_TEMPLATE: "https://libgen.li/ads.php?md5={md5}",
 
 	capabilities: {
 		search: true,
@@ -27,7 +27,7 @@ __cinderExport = {
 				id: "base_url",
 				label: "Base URL",
 				type: "text",
-				defaultValue: "https://example.invalid",
+				defaultValue: "https://libgen.li",
 				placeholder: "https://example.invalid",
 			},
 			{
@@ -294,7 +294,7 @@ __cinderExport = {
 					},
 				});
 			} catch (err) {
-				cinder.warn("[GenericDirectFixture] Failed to parse table row: " + err);
+				cinder.warn("[LibGen] Failed to parse table row: " + err);
 			}
 		}
 
@@ -360,14 +360,14 @@ __cinderExport = {
 					url: detailUrl || directUrl,
 					format: format,
 					size: size || undefined,
-					source: "Generic Direct Fixture",
+					source: "LibGen",
 					extra: {
 						directUrl: directUrl || undefined,
 						detailUrl: detailUrl || undefined,
 					},
 				});
 			} catch (err) {
-				cinder.warn("[GenericDirectFixture] Failed to parse result: " + err);
+				cinder.warn("[LibGen] Failed to parse result: " + err);
 			}
 		}
 
@@ -430,7 +430,7 @@ __cinderExport = {
 		var pageUrl = this._absUrl(baseUrl, item.url || (item.extra ? item.extra.detailUrl : ""));
 		if (!pageUrl) throw new Error("No fixture detail URL to resolve.");
 
-		cinder.log("[GenericDirectFixture] Resolve: " + pageUrl);
+		cinder.log("[LibGen] Resolve: " + pageUrl);
 		var html = await this._fetchHtml(pageUrl);
 		var doc = cinder.parseHTML(html);
 		var selector = await this._getSetting(
