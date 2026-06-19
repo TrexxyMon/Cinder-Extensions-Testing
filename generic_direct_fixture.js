@@ -7,6 +7,10 @@ __cinderExport = {
 	contentType: "books",
 	contentTypes: ["ebook"],
 	excludeFromDefaultMetadataProviders: true,
+	_DEFAULT_SEARCH_PATH: "/index.php?req={query}&columns%5B%5D=t&columns%5B%5D=a&columns%5B%5D=s&columns%5B%5D=y&columns%5B%5D=p&columns%5B%5D=i&objects%5B%5D=f&objects%5B%5D=e&objects%5B%5D=s&objects%5B%5D=a&objects%5B%5D=p&objects%5B%5D=w&topics%5B%5D=l&topics%5B%5D=c&topics%5B%5D=f&topics%5B%5D=a&topics%5B%5D=m&topics%5B%5D=r&topics%5B%5D=s&res=25&filesuns=all{pageParam}",
+	_DEFAULT_DETAIL_TEMPLATE: "https://placeholder.url/edition.php?id={id}",
+	_DEFAULT_DOWNLOAD_TEMPLATE: "https://placeholder.url/file.php?id={id}",
+	_DEFAULT_MD5_DOWNLOAD_TEMPLATE: "https://placeholder.url/ads.php?md5={md5}",
 
 	capabilities: {
 		search: true,
@@ -30,8 +34,8 @@ __cinderExport = {
 				id: "search_path",
 				label: "Search Path",
 				type: "text",
-				defaultValue: "/search?q={query}&page={page}",
-				placeholder: "/search?q={query}&page={page}",
+				defaultValue: this._DEFAULT_SEARCH_PATH,
+				placeholder: this._DEFAULT_SEARCH_PATH,
 			},
 			{
 				id: "result_selector",
@@ -51,22 +55,22 @@ __cinderExport = {
 				id: "placeholder_detail_template",
 				label: "Placeholder Detail Template",
 				type: "text",
-				defaultValue: "https://placeholder.url/item/{id}",
-				placeholder: "https://placeholder.url/item/{id}",
+				defaultValue: this._DEFAULT_DETAIL_TEMPLATE,
+				placeholder: this._DEFAULT_DETAIL_TEMPLATE,
 			},
 			{
 				id: "placeholder_download_template",
 				label: "Placeholder Download Template",
 				type: "text",
-				defaultValue: "https://placeholder.url/get.php?id={id}&format={format}",
-				placeholder: "https://placeholder.url/get.php?id={id}&format={format}",
+				defaultValue: this._DEFAULT_DOWNLOAD_TEMPLATE,
+				placeholder: this._DEFAULT_DOWNLOAD_TEMPLATE,
 			},
 			{
 				id: "placeholder_md5_download_template",
 				label: "Placeholder MD5 Download Template",
 				type: "text",
-				defaultValue: "https://placeholder.url/download/{md5}?format={format}",
-				placeholder: "https://placeholder.url/download/{md5}?format={format}",
+				defaultValue: this._DEFAULT_MD5_DOWNLOAD_TEMPLATE,
+				placeholder: this._DEFAULT_MD5_DOWNLOAD_TEMPLATE,
 			},
 		];
 	},
@@ -119,10 +123,14 @@ __cinderExport = {
 
 	_searchUrl: async function(query, page) {
 		var baseUrl = await this._getBaseUrl();
-		var path = await this._getSetting("search_path", "/search?q={query}&page={page}");
+		var path = await this._getSetting("search_path", this._DEFAULT_SEARCH_PATH);
+		var pageNumber = (page || 0) + 1;
+		var pageParam = pageNumber > 1 ? "&curtab=f&order=&ordermode=desc&filesuns=all&page=" + pageNumber : "";
+		var encodedQuery = encodeURIComponent(query || "").replace(/%20/g, "+");
 		var resolved = path
-			.replace(/\{query\}/g, encodeURIComponent(query || ""))
-			.replace(/\{page\}/g, String((page || 0) + 1))
+			.replace(/\{query\}/g, encodedQuery)
+			.replace(/\{pageParam\}/g, pageParam)
+			.replace(/\{page\}/g, String(pageNumber))
 			.replace(/\{page0\}/g, String(page || 0));
 		return this._absUrl(baseUrl, resolved);
 	},
@@ -176,6 +184,16 @@ __cinderExport = {
 		return pathMatch ? pathMatch[1] : "";
 	},
 
+	_firstMd5FromLinks: function(node) {
+		if (!node) return "";
+		var links = node.querySelectorAll("a[href]");
+		for (var i = 0; i < links.length; i++) {
+			var md5 = this._md5FromUrl(links[i].attr("href") || "");
+			if (md5) return md5;
+		}
+		return "";
+	},
+
 	_isRestrictedDistributionUrl: function(url) {
 		var lower = String(url || "").toLowerCase();
 		return (
@@ -190,7 +208,7 @@ __cinderExport = {
 	},
 
 	_placeholderDetailUrl: async function(id, format) {
-		var template = await this._getSetting("placeholder_detail_template", "https://placeholder.url/item/{id}");
+		var template = await this._getSetting("placeholder_detail_template", this._DEFAULT_DETAIL_TEMPLATE);
 		return this._renderTemplate(template, {
 			id: id,
 			format: format || "epub",
@@ -201,8 +219,8 @@ __cinderExport = {
 		tokens = tokens || {};
 		var md5 = this._clean(tokens.md5 || "");
 		var template = md5
-			? await this._getSetting("placeholder_md5_download_template", "https://placeholder.url/download/{md5}?format={format}")
-			: await this._getSetting("placeholder_download_template", "https://placeholder.url/get.php?id={id}&format={format}");
+			? await this._getSetting("placeholder_md5_download_template", this._DEFAULT_MD5_DOWNLOAD_TEMPLATE)
+			: await this._getSetting("placeholder_download_template", this._DEFAULT_DOWNLOAD_TEMPLATE);
 		return this._renderTemplate(template, {
 			id: id,
 			format: format || "epub",
@@ -211,7 +229,8 @@ __cinderExport = {
 	},
 
 	_parseLegacyTableRows: async function(doc) {
-		var rows = doc.querySelectorAll("table tbody tr");
+		var rows = doc.querySelectorAll("table.table-striped tbody tr");
+		if (!rows || rows.length === 0) rows = doc.querySelectorAll("table tbody tr");
 		var results = [];
 		var seen = {};
 
@@ -219,7 +238,7 @@ __cinderExport = {
 			try {
 				var row = rows[i];
 				var cells = row.querySelectorAll("td");
-				if (!cells || cells.length < 8) continue;
+				if (!cells || cells.length < 9) continue;
 
 				var infoCell = cells[0];
 				var titleLink = infoCell.querySelector("a[data-detail]") ||
@@ -238,17 +257,20 @@ __cinderExport = {
 				var sizeLink = cells[6].querySelector("a[href]");
 				var size = this._clean(cells[6].text());
 				var format = this._detectFormat(cells[7].text());
+				var mirrorCell = cells[8] || null;
 				var sizeHref = sizeLink ? sizeLink.attr("href") : "";
 				var titleHref = titleLink ? titleLink.attr("href") : "";
-				var sourceMd5 = this._md5FromUrl(sizeHref) || this._md5FromUrl(titleHref);
-				var sourceId = sourceMd5 || this._fileIdFromUrl(sizeHref) || this._fileIdFromUrl(titleHref);
+				var sourceMd5 = this._firstMd5FromLinks(mirrorCell) || this._md5FromUrl(sizeHref) || this._md5FromUrl(titleHref);
+				var fileId = this._fileIdFromUrl(sizeHref);
+				var detailId = this._fileIdFromUrl(titleHref);
+				var sourceId = sourceMd5 || fileId || detailId;
 				if (!sourceId) sourceId = "row-" + i;
 
 				var id = "fixture-table-" + sourceId + "-" + format;
 				if (seen[id]) continue;
 				seen[id] = true;
 
-				var detailUrl = await this._placeholderDetailUrl(sourceId, format);
+				var detailUrl = await this._placeholderDetailUrl(detailId || fileId || sourceId, format);
 				var directUrl = await this._placeholderDownloadUrl(sourceId, format, { md5: sourceMd5 });
 				results.push({
 					id: id,
@@ -262,6 +284,8 @@ __cinderExport = {
 						directUrl: directUrl,
 						detailUrl: detailUrl,
 						md5: sourceMd5 || undefined,
+						fileId: fileId || undefined,
+						detailId: detailId || undefined,
 						publisher: publisher || undefined,
 						year: year || undefined,
 						language: language || undefined,
