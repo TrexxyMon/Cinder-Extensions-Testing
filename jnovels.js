@@ -2,7 +2,7 @@ var JNovelsSource = {};
 
 JNovelsSource.id = "jnovels";
 JNovelsSource.name = "JNovels";
-JNovelsSource.version = "0.1.0-cinder";
+JNovelsSource.version = "0.1.1-cinder";
 JNovelsSource.icon = "JN";
 JNovelsSource.description = "Search JNovels light novel EPUB/PDF posts with on-device link resolution.";
 JNovelsSource.contentType = "books";
@@ -319,6 +319,33 @@ JNovelsSource.getDiscoverItems = async function(sectionId, page) {
     }
 };
 
+
+JNovelsSource._shortlinkNeedsManualFlow = async function(url, referer) {
+    try {
+        var response = await cinder.fetch(url, {
+            headers: this._headers(referer || this.BASE_URL + "/"),
+            timeout: 12000,
+        });
+        var status = response && response.status ? Number(response.status) : 0;
+        var html = String((response && response.data) || "").toLowerCase();
+        var location = "";
+        try {
+            location = String(response.headers && (response.headers.location || response.headers.Location || response.headers.LOCATION) || "").toLowerCase();
+        } catch (_) {}
+        return status === 307 ||
+            location.indexOf("safe.php") !== -1 ||
+            location.indexOf("kecapku.com") !== -1 ||
+            location.indexOf("sazwe.com") !== -1 ||
+            html.indexOf("recaptcha") !== -1 ||
+            html.indexOf("g-recaptcha") !== -1 ||
+            html.indexOf("fuckadblock") !== -1 ||
+            html.indexOf("disable adblock") !== -1 ||
+            html.indexOf("safe.php") !== -1;
+    } catch (_) {
+        return false;
+    }
+};
+
 JNovelsSource.resolve = async function(item) {
     if (!item) throw new Error("JNovels item is missing.");
     var articleUrl = item.url || (item.extra && item.extra.articleUrl) || "";
@@ -344,6 +371,10 @@ JNovelsSource.resolve = async function(item) {
 
     if (!this._isShortlink(downloadUrl)) {
         throw new Error("JNovels returned an unsupported download host: " + downloadUrl);
+    }
+
+    if (await this._shortlinkNeedsManualFlow(downloadUrl, articleUrl || this.BASE_URL + "/")) {
+        throw new Error("JNovels uses an interactive captcha/ad shortlink for this file. Cinder cannot complete that invisible download flow yet, so this result cannot be downloaded automatically.");
     }
 
     return {
