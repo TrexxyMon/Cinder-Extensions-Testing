@@ -1,12 +1,12 @@
 {
-  "version": "1.0.2",
+  "version": "1.0.3",
   "name": "Cinder Private Extensions Hotfix",
   "author": "TrexxyMon",
   "extensions": [
     {
       "id": "freemagazines-hotfix",
       "name": "FreeMagazines.top (Hotfix)",
-      "version": "1.1.6-cinder-hotfix",
+      "version": "1.1.7-cinder-hotfix",
       "description": "Temporary FreeMagazines.top alias for current builds affected by stale iCloud extension tombstones.",
       "contentType": "magazine",
       "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/freemagazines_hotfix.js",
