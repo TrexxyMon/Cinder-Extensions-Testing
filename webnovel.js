@@ -1,7 +1,7 @@
 __cinderExport = {
     id: "webnovel",
     name: "WebNovel",
-    version: "0.1.1-cinder",
+    version: "0.1.2-cinder",
     icon: "WN",
     description: "Search and read public chaptered web novels from WebNovel. Locked chapters are not bypassed.",
     contentType: "books",
@@ -136,6 +136,18 @@ __cinderExport = {
         return this.BASE_URL + "/book/" + encodeURIComponent(bookId) + "/catalog";
     },
 
+    _searchPageUrl: function(query, pageIndex) {
+        var url = this.BASE_URL + "/search?keywords=" + encodeURIComponent(query);
+        if (pageIndex > 1) {
+            url += "&pageIndex=" + encodeURIComponent(pageIndex);
+        }
+        return url;
+    },
+
+    _searchApiUrl: function(query, pageIndex) {
+        return this.BASE_URL + "/go/pcm/search/result?keywords=" + encodeURIComponent(query) + "&pageIndex=" + pageIndex + "&type=novel&orderBy=1";
+    },
+
     _contentUrl: function(bookId, chapterId) {
         return this.BASE_URL + "/go/pcm/chapter/getContent?bookId=" + encodeURIComponent(bookId) + "&chapterId=" + encodeURIComponent(chapterId);
     },
@@ -171,6 +183,19 @@ __cinderExport = {
                 publicOnly: true,
             },
         };
+    },
+
+    _resultsFromSearchItems: function(items) {
+        var rawItems = Array.isArray(items) ? items : [];
+        var results = [];
+        var seen = {};
+        for (var i = 0; i < rawItems.length; i++) {
+            var result = this._bookResult(rawItems[i]);
+            if (!result || seen[result.id]) continue;
+            seen[result.id] = true;
+            results.push(result);
+        }
+        return results;
     },
 
     _dateString: function(timestamp) {
@@ -263,23 +288,39 @@ __cinderExport = {
 
     search: async function(query, page) {
         if (!query || !query.trim()) return [];
+        var cleanQuery = query.trim();
         var pageIndex = Math.max(1, (page || 0) + 1);
-        var url = this.BASE_URL + "/go/pcm/search/result?keywords=" + encodeURIComponent(query.trim()) + "&pageIndex=" + pageIndex + "&type=novel&orderBy=1";
-        var payload = await this._fetchJson(url, {
-            referer: this.BASE_URL + "/search?keywords=" + encodeURIComponent(query.trim()),
-        });
-        var items = payload && payload.data && payload.data.bookInfo && Array.isArray(payload.data.bookInfo.bookItems)
-            ? payload.data.bookInfo.bookItems
-            : [];
-        var results = [];
-        var seen = {};
-        for (var i = 0; i < items.length; i++) {
-            var result = this._bookResult(items[i]);
-            if (!result || seen[result.id]) continue;
-            seen[result.id] = true;
-            results.push(result);
+
+        var pageError = null;
+        try {
+            var html = await this._fetchHtml(this._searchPageUrl(cleanQuery, pageIndex), {
+                referer: this.BASE_URL + "/",
+                timeout: 30000,
+                retries: 2,
+            });
+            var data = this._extractNextData(html);
+            var pageProps = data && data.props && data.props.initialProps && data.props.initialProps.pageProps;
+            var pageItems = pageProps &&
+                pageProps.rawData &&
+                pageProps.rawData.bookInfo &&
+                pageProps.rawData.bookInfo.bookItems;
+            return this._resultsFromSearchItems(pageItems);
+        } catch (error) {
+            pageError = error;
         }
-        return results;
+
+        try {
+            var payload = await this._fetchJson(this._searchApiUrl(cleanQuery, pageIndex), {
+                referer: this._searchPageUrl(cleanQuery, pageIndex),
+                retries: 2,
+            });
+            var apiItems = payload && payload.data && payload.data.bookInfo && Array.isArray(payload.data.bookInfo.bookItems)
+                ? payload.data.bookInfo.bookItems
+                : [];
+            return this._resultsFromSearchItems(apiItems);
+        } catch (apiError) {
+            throw new Error("WebNovel search failed. Page: " + (pageError && pageError.message ? pageError.message : pageError) + " API: " + (apiError && apiError.message ? apiError.message : apiError));
+        }
     },
 
     getBookChapters: async function(bookId) {
