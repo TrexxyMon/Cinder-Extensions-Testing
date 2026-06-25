@@ -1,5 +1,5 @@
 {
-    "version":  "2.1.41",
+    "version":  "2.1.42",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
@@ -61,6 +61,26 @@
                            "contentTypes":  [
                                                 "magazine"
                                             ]
+                       },
+                       {
+                           "id":  "webnovel",
+                           "name":  "WebNovel",
+                           "version":  "0.1.0-cinder",
+                           "description":  "Search and read public chaptered web novels from WebNovel. Locked chapters are not bypassed.",
+                           "contentType":  "books",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/webnovel.js",
+                           "minCinderVersion":  "2.0.0",
+                           "contentTypes":  [
+                                                "webnovel",
+                                                "ebook"
+                                            ],
+                           "contentSubtypes":  [
+                                                   "webFiction",
+                                                   "lightNovel",
+                                                   "wuxia",
+                                                   "xianxia",
+                                                   "xuanhuan"
+                                               ]
                        },
                        {
                            "id":  "gocomics",
