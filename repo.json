@@ -1,5 +1,5 @@
 {
-    "version":  "2.1.45",
+    "version":  "2.1.46",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
@@ -49,6 +49,23 @@
                                                 "ebook"
                                             ],
                            "excludeFromDefaultMetadataProviders":  true
+                       },
+                       {
+                           "id":  "jnovels",
+                           "name":  "JNovels",
+                           "version":  "0.1.0-cinder",
+                           "description":  "Search JNovels light novel EPUB/PDF posts with on-device link resolution.",
+                           "contentType":  "books",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/jnovels.js",
+                           "minCinderVersion":  "2.0.0",
+                           "contentTypes":  [
+                                                "ebook",
+                                                "webnovel"
+                                            ],
+                           "contentSubtypes":  [
+                                                   "lightNovel",
+                                                   "webFiction"
+                                               ]
                        },
                        {
                            "id":  "freemagazines",
