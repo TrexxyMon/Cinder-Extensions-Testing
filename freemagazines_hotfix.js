@@ -2,7 +2,7 @@ var FreeMagazinesSource = {};
 
 FreeMagazinesSource.id = "freemagazines-hotfix";
 FreeMagazinesSource.name = "FreeMagazines.top (Hotfix)";
-FreeMagazinesSource.version = "1.1.4-cinder-hotfix";
+FreeMagazinesSource.version = "1.1.5-cinder-hotfix";
 FreeMagazinesSource.icon = "\uD83D\uDCF0";
 FreeMagazinesSource.description = "Browse and search PDF magazines from FreeMagazines.top with on-device resolution.";
 FreeMagazinesSource.contentType = "magazine";
@@ -17,6 +17,7 @@ FreeMagazinesSource.capabilities = {
 };
 
 FreeMagazinesSource.BASE_URL = "https://freemagazines.top";
+FreeMagazinesSource.PROXY_RESOLVE_URL = "https://fmproxy.tonystegall.net/resolve";
 
 FreeMagazinesSource.CATEGORIES = [
 	{ id: "architecture-real-estate-building", title: "Architecture & Real Estate" },
@@ -423,7 +424,16 @@ FreeMagazinesSource.resolve = async function(item) {
 		}
 	}
 
-	if (!fileUrl) throw new Error("Could not resolve the magazine PDF URL on this device.");
+	if (!fileUrl) {
+		cinder.warn("[FreeMagazines] On-device resolve failed; using temporary proxy fallback.");
+		return {
+			url: this.PROXY_RESOLVE_URL + "?url=" + encodeURIComponent(pageUrl),
+			fileName: fileName,
+			headers: {
+				"User-Agent": this._headers()["User-Agent"],
+			},
+		};
+	}
 
 	return {
 		url: fileUrl,
