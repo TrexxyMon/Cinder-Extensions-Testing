@@ -1,5 +1,5 @@
 {
-    "version":  "2.1.49",
+    "version":  "2.1.50",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
@@ -65,25 +65,6 @@
                            "contentSubtypes":  [
                                                    "lightNovel",
                                                    "webFiction"
-                                               ]
-                       },
-                       {
-                           "id":  "elscione",
-                           "name":  "ElScione Server",
-                           "version":  "0.1.0-cinder",
-                           "description":  "Search ElScione\u0027s h5ai ebook and manga server for EPUB, PDF, CBZ, and CBR files.",
-                           "contentType":  "books",
-                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/elscione.js",
-                           "minCinderVersion":  "2.0.0",
-                           "contentTypes":  [
-                                                "ebook",
-                                                "manga",
-                                                "webnovel"
-                                            ],
-                           "contentSubtypes":  [
-                                                   "lightNovel",
-                                                   "webFiction",
-                                                   "manga"
                                                ]
                        },
                        {
