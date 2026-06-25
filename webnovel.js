@@ -1,7 +1,7 @@
 __cinderExport = {
     id: "webnovel",
     name: "WebNovel",
-    version: "0.1.0-cinder",
+    version: "0.1.1-cinder",
     icon: "WN",
     description: "Search and read public chaptered web novels from WebNovel. Locked chapters are not bypassed.",
     contentType: "books",
@@ -33,14 +33,31 @@ __cinderExport = {
     },
 
     _fetch: async function(url, options) {
-        var response = await cinder.fetch(url, {
-            headers: this._headers(options && options.referer),
-            timeout: options && options.timeout ? options.timeout : 30000,
-        });
-        if (!response || response.status < 200 || response.status >= 300 || response.data == null) {
-            throw new Error("WebNovel request failed: " + url);
+        var attempts = options && options.retries ? options.retries : 1;
+        var lastStatus = 0;
+        var lastError = "";
+        for (var attempt = 1; attempt <= attempts; attempt++) {
+            try {
+                var response = await cinder.fetch(url, {
+                    headers: this._headers(options && options.referer),
+                    timeout: options && options.timeout ? options.timeout : 30000,
+                });
+                lastStatus = response && response.status ? response.status : 0;
+                if (response && response.status >= 200 && response.status < 300 && response.data != null) {
+                    return response.data;
+                }
+            } catch (error) {
+                lastError = error && error.message ? error.message : String(error || "");
+            }
+
+            if (attempt < attempts && typeof setTimeout === "function") {
+                await new Promise(function(resolve) {
+                    setTimeout(resolve, 350 * attempt);
+                });
+            }
         }
-        return response.data;
+
+        throw new Error("WebNovel request failed" + (lastStatus ? " (HTTP " + lastStatus + ")" : "") + (lastError ? " (" + lastError + ")" : "") + ": " + url);
     },
 
     _fetchJson: async function(url, options) {
@@ -123,6 +140,10 @@ __cinderExport = {
         return this.BASE_URL + "/go/pcm/chapter/getContent?bookId=" + encodeURIComponent(bookId) + "&chapterId=" + encodeURIComponent(chapterId);
     },
 
+    _chapterPageUrl: function(bookId, chapterId) {
+        return this._bookUrl(bookId) + "/" + encodeURIComponent(chapterId);
+    },
+
     _bookResult: function(item) {
         var bookId = String(item.bookId || item.id || "").trim();
         if (!bookId) return null;
@@ -175,6 +196,69 @@ __cinderExport = {
         cleaned = cleaned.replace(/\son[a-z]+\s*=\s*[^\s>]+/gi, "");
         cleaned = cleaned.replace(/javascript:/gi, "");
         return cleaned;
+    },
+
+    _chapterFromPageData: function(data, parsed) {
+        var pageProps = data && data.props && data.props.initialProps && data.props.initialProps.pageProps;
+        var serverChapter = pageProps &&
+            pageProps.data &&
+            pageProps.data.initChapterServer &&
+            pageProps.data.initChapterServer.chapterInfo;
+        if (serverChapter && String(serverChapter.chapterId || "") === String(parsed.chapterId)) {
+            return serverChapter;
+        }
+
+        var entities = data && data.props && data.props.initialState && data.props.initialState.entities;
+        var chapter = entities && entities.chapter && entities.chapter[parsed.chapterId];
+        if (chapter) return chapter;
+        return null;
+    },
+
+    _fetchChapterFromApi: async function(parsed) {
+        var payload = await this._fetchJson(this._contentUrl(parsed.bookId, parsed.chapterId), {
+            referer: this._chapterPageUrl(parsed.bookId, parsed.chapterId),
+            timeout: 30000,
+            retries: 2,
+        });
+        if (!payload || payload.code !== 0 || !payload.data || !payload.data.chapterInfo) {
+            throw new Error("WebNovel chapter API returned no chapter data.");
+        }
+        return payload.data.chapterInfo;
+    },
+
+    _fetchChapterFromPage: async function(parsed) {
+        var html = await this._fetchHtml(this._chapterPageUrl(parsed.bookId, parsed.chapterId), {
+            referer: this._bookUrl(parsed.bookId),
+            timeout: 30000,
+            retries: 2,
+        });
+        var data = this._extractNextData(html);
+        var chapter = this._chapterFromPageData(data, parsed);
+        if (!chapter) {
+            throw new Error("WebNovel chapter page returned no chapter data.");
+        }
+        return chapter;
+    },
+
+    _chapterResult: function(parsed, chapter) {
+        if (!chapter || !this._isPublicChapter(chapter) || !Array.isArray(chapter.contents) || !chapter.contents.length) {
+            throw new Error("This WebNovel chapter is locked or not publicly readable.");
+        }
+
+        var htmlParts = [];
+        for (var i = 0; i < chapter.contents.length; i++) {
+            var paragraph = chapter.contents[i] || {};
+            if (!paragraph.content) continue;
+            htmlParts.push(this._sanitizeChapterHtml(paragraph.content));
+        }
+
+        return {
+            id: parsed.bookId + "::" + parsed.chapterId,
+            title: "Chapter " + Number(chapter.chapterIndex || 0) + " - " + this._decode(chapter.chapterName || ""),
+            url: this._chapterPageUrl(parsed.bookId, parsed.chapterId),
+            index: Number(chapter.chapterIndex || 0),
+            html: htmlParts.join("\n"),
+        };
     },
 
     search: async function(query, page) {
@@ -263,28 +347,17 @@ __cinderExport = {
 
     getBookChapter: async function(chapterId) {
         var parsed = this._parseChapterId(chapterId);
-        var payload = await this._fetchJson(this._contentUrl(parsed.bookId, parsed.chapterId), {
-            referer: this._bookUrl(parsed.bookId) + "/" + parsed.chapterId,
-            timeout: 30000,
-        });
-        var chapter = payload && payload.data && payload.data.chapterInfo;
-        if (!chapter || !this._isPublicChapter(chapter) || !Array.isArray(chapter.contents) || !chapter.contents.length) {
-            throw new Error("This WebNovel chapter is locked or not publicly readable.");
+        var pageError = null;
+        try {
+            return this._chapterResult(parsed, await this._fetchChapterFromPage(parsed));
+        } catch (error) {
+            pageError = error;
         }
 
-        var htmlParts = [];
-        for (var i = 0; i < chapter.contents.length; i++) {
-            var paragraph = chapter.contents[i] || {};
-            if (!paragraph.content) continue;
-            htmlParts.push(this._sanitizeChapterHtml(paragraph.content));
+        try {
+            return this._chapterResult(parsed, await this._fetchChapterFromApi(parsed));
+        } catch (apiError) {
+            throw new Error("WebNovel chapter fetch failed. Page: " + (pageError && pageError.message ? pageError.message : pageError) + " API: " + (apiError && apiError.message ? apiError.message : apiError));
         }
-
-        return {
-            id: parsed.bookId + "::" + parsed.chapterId,
-            title: "Chapter " + Number(chapter.chapterIndex || 0) + " - " + this._decode(chapter.chapterName || ""),
-            url: this._bookUrl(parsed.bookId) + "/" + parsed.chapterId,
-            index: Number(chapter.chapterIndex || 0),
-            html: htmlParts.join("\n"),
-        };
     },
 };
