@@ -2,7 +2,7 @@ var JNovelsSource = {};
 
 JNovelsSource.id = "jnovels";
 JNovelsSource.name = "JNovels";
-JNovelsSource.version = "0.1.1-cinder";
+JNovelsSource.version = "0.1.2-cinder";
 JNovelsSource.icon = "JN";
 JNovelsSource.description = "Search JNovels light novel EPUB/PDF posts with on-device link resolution.";
 JNovelsSource.contentType = "books";
@@ -328,6 +328,10 @@ JNovelsSource._shortlinkNeedsManualFlow = async function(url, referer) {
         });
         var status = response && response.status ? Number(response.status) : 0;
         var html = String((response && response.data) || "").toLowerCase();
+        var decodedHtml = html;
+        try {
+            decodedHtml = decodeURIComponent(html);
+        } catch (_) {}
         var location = "";
         try {
             location = String(response.headers && (response.headers.location || response.headers.Location || response.headers.LOCATION) || "").toLowerCase();
@@ -340,7 +344,10 @@ JNovelsSource._shortlinkNeedsManualFlow = async function(url, referer) {
             html.indexOf("g-recaptcha") !== -1 ||
             html.indexOf("fuckadblock") !== -1 ||
             html.indexOf("disable adblock") !== -1 ||
-            html.indexOf("safe.php") !== -1;
+            html.indexOf("safe.php") !== -1 ||
+            html.indexOf("redirecting pls wait") !== -1 ||
+            html.indexOf("made by paras jain") !== -1 ||
+            (html.indexOf("google.com/url") !== -1 && (decodedHtml.indexOf("url=https://kecapku.com") !== -1 || decodedHtml.indexOf("url=https://sazwe.com") !== -1));
     } catch (_) {
         return false;
     }

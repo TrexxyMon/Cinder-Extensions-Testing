@@ -1,5 +1,5 @@
 {
-    "version":  "2.1.47",
+    "version":  "2.1.48",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
@@ -53,7 +53,7 @@
                        {
                            "id":  "jnovels",
                            "name":  "JNovels",
-                           "version":  "0.1.1-cinder",
+                           "version":  "0.1.2-cinder",
                            "description":  "Search JNovels light novel EPUB/PDF posts with on-device link resolution.",
                            "contentType":  "books",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/jnovels.js",
