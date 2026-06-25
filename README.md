@@ -15,7 +15,6 @@ https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/repo.
 ## Available Extensions
 - **Z-Library (Direct)**: Scrapes Z-Library mirrors with IP rotation and Cloudflare bypass.
 - **FreeMagazines.top**: Searches and browses PDF magazines with on-device link resolution, no external proxy.
-- **ReadNovelEU**: Searches and reads chaptered web novels from the current WuxiaWorld destination.
 
 ## Disclaimer
 These extensions are for testing purposes only. Please respect copyright laws and the terms of service of the respective providers.
