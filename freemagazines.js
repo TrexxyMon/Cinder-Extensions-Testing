@@ -2,7 +2,7 @@ var FreeMagazinesSource = {};
 
 FreeMagazinesSource.id = "freemagazines";
 FreeMagazinesSource.name = "FreeMagazines.top";
-FreeMagazinesSource.version = "1.1.4-cinder";
+FreeMagazinesSource.version = "1.1.5-cinder";
 FreeMagazinesSource.icon = "\uD83D\uDCF0";
 FreeMagazinesSource.description = "Browse and search PDF magazines from FreeMagazines.top with on-device resolution.";
 FreeMagazinesSource.contentType = "magazine";
@@ -161,7 +161,84 @@ FreeMagazinesSource._getHeader = function(headers, name) {
 	return "";
 };
 
+FreeMagazinesSource._decodeBase64Url = function(value) {
+	var input = String(value || "").replace(/-/g, "+").replace(/_/g, "/");
+	while (input.length % 4) input += "=";
+	var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
+	var output = "";
+	var buffer = 0;
+	var bits = 0;
+	for (var i = 0; i < input.length; i++) {
+		var c = chars.indexOf(input.charAt(i));
+		if (c < 0) continue;
+		if (c === 64) break;
+		buffer = (buffer << 6) | c;
+		bits += 6;
+		if (bits >= 8) {
+			bits -= 8;
+			output += String.fromCharCode((buffer >> bits) & 0xff);
+		}
+	}
+	return output;
+};
+
+FreeMagazinesSource._extractJwtCsrfToken = function(token) {
+	try {
+		var parts = String(token || "").split(".");
+		if (parts.length < 2) return "";
+		var payload = JSON.parse(this._decodeBase64Url(parts[1]));
+		return payload && payload.csrfToken ? String(payload.csrfToken) : "";
+	} catch (err) {
+		return "";
+	}
+};
+
+FreeMagazinesSource._cookieCandidatesFromSetCookie = function(headers) {
+	var raw = this._getHeader(headers, "set-cookie");
+	if (!raw) return [];
+	var parts = Array.isArray(raw) ? raw : [String(raw)];
+	var baseCookies = {};
+	var tokens = [];
+	var seenTokens = {};
+	var wanted = /(?:^|,\s*)((?:production_access_token|__csrf_[A-Za-z0-9_]+|__cacheId|lmwr_client_id_apilimewirecom)=([^;,\s]*))/g;
+	for (var i = 0; i < parts.length; i++) {
+		var text = String(parts[i] || "");
+		var match;
+		while ((match = wanted.exec(text))) {
+			var pair = match[1];
+			var eq = pair.indexOf("=");
+			if (eq <= 0) continue;
+			var name = pair.substring(0, eq);
+			var value = pair.substring(eq + 1);
+			if (!value) continue;
+			if (name === "production_access_token") {
+				if (!seenTokens[value]) {
+					seenTokens[value] = true;
+					tokens.push(value);
+				}
+			} else {
+				baseCookies[name] = value;
+			}
+		}
+	}
+	var baseHeader = Object.keys(baseCookies).map(function(name) {
+		return name + "=" + baseCookies[name];
+	});
+	var candidates = [];
+	for (var j = 0; j < tokens.length; j++) {
+		var csrfToken = this._extractJwtCsrfToken(tokens[j]);
+		if (!csrfToken) continue;
+		candidates.push({
+			csrfToken: csrfToken,
+			cookieHeader: baseHeader.concat(["production_access_token=" + tokens[j]]).join("; "),
+		});
+	}
+	return candidates;
+};
+
 FreeMagazinesSource._cookieHeaderFromSetCookie = function(headers) {
+	var candidates = this._cookieCandidatesFromSetCookie(headers);
+	if (candidates.length) return candidates[candidates.length - 1].cookieHeader;
 	var raw = this._getHeader(headers, "set-cookie");
 	if (!raw) return "";
 	var parts = Array.isArray(raw) ? raw : [String(raw)];
@@ -191,17 +268,42 @@ FreeMagazinesSource._decodeRouteHtml = function(html) {
 		.replace(/\\\//g, "/");
 };
 
+FreeMagazinesSource._sleep = function(ms) {
+	return new Promise(function(resolve) {
+		setTimeout(resolve, ms);
+	});
+};
+
+FreeMagazinesSource._isLimeWireUnavailable = function(html) {
+	var decoded = this._decodeRouteHtml(html);
+	return decoded.indexOf("Content not found | LimeWire") >= 0
+		|| decoded.indexOf('"ok",false') >= 0 && decoded.indexOf('"sharingBucketContentData"') >= 0;
+};
+
+FreeMagazinesSource._extractRouteToken = function(decoded, key) {
+	var re = new RegExp('"' + key + '","([^"]+)"', "g");
+	var match;
+	var token = "";
+	while ((match = re.exec(decoded))) {
+		var value = match[1] || "";
+		if (/^[A-Za-z0-9_\-+/]{30,}={0,2}$/.test(value)) {
+			token = value;
+		}
+	}
+	return token;
+};
+
 FreeMagazinesSource._extractLimeWireDownloadRequest = function(html) {
 	var decoded = this._decodeRouteHtml(html);
 	var uuid = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 	var pair = decoded.match(new RegExp('"(' + uuid + ')","originalSharingBucketId","(' + uuid + ')"'));
-	var selfCsrf = decoded.match(/"selfCsrf","([^"]+)"/);
+	var selfCsrf = this._extractRouteToken(decoded, "selfCsrf") || this._extractRouteToken(decoded, "csrfToken");
 	var fileName = decoded.match(/"name","([^"]+\.(?:pdf|epub|cbz|cbr))"/i);
 	if (!pair || !selfCsrf) return null;
 	return {
 		contentItemId: pair[1],
 		bucketId: pair[2],
-		csrfToken: selfCsrf[1],
+		csrfToken: selfCsrf,
 		fileName: fileName ? this._decode(fileName[1]) : "",
 	};
 };
@@ -222,12 +324,23 @@ FreeMagazinesSource._resolveLimeWireApi = async function(limeUrl, request, cooki
 	};
 	if (cookieHeader) headers.Cookie = cookieHeader;
 
-	var response = await cinder.fetch(apiUrl, {
-		method: "POST",
-		headers: headers,
-		body: body,
-		timeout: 20000,
-	});
+	var self = this;
+	var fetchDownload = async function() {
+		return cinder.fetch(apiUrl, {
+			method: "POST",
+			headers: headers,
+			body: body,
+			timeout: 20000,
+		});
+	};
+
+	var response = await fetchDownload();
+	var responseText = response && response.data ? String(response.data) : "";
+	if (response && response.status === 403 && /csrf_invalid|created within this request/i.test(responseText)) {
+		cinder.log("[FreeMagazines] LimeWire token is fresh; retrying after a short settle.");
+		await self._sleep(2600);
+		response = await fetchDownload();
+	}
 	if (!response || response.status !== 200) {
 		cinder.warn("[FreeMagazines] LimeWire API resolve failed with status " + (response ? response.status : 0));
 		return "";
@@ -368,13 +481,22 @@ FreeMagazinesSource.resolve = async function(item) {
 		timeout: 20000,
 	});
 	var limeHtml = limePage && limePage.data ? limePage.data : "";
+	if (this._isLimeWireUnavailable(limeHtml)) {
+		throw new Error("The magazine host link is no longer available.");
+	}
 	var downloadRequest = this._extractLimeWireDownloadRequest(limeHtml);
+	var cookieCandidates = this._cookieCandidatesFromSetCookie(limePage && limePage.headers);
 	var cookieHeader = this._cookieHeaderFromSetCookie(limePage && limePage.headers);
 	if (downloadRequest) {
 		if (downloadRequest.fileName) {
 			fileName = this._slugToFileName(downloadRequest.fileName.replace(/\.(?:pdf|epub|cbz|cbr)$/i, ""));
 		}
-		fileUrl = await this._resolveLimeWireApi(limeUrl, downloadRequest, cookieHeader);
+		var candidateAttempts = cookieCandidates.length ? cookieCandidates : [{ cookieHeader: cookieHeader, csrfToken: downloadRequest.csrfToken }];
+		for (var candidateIndex = 0; candidateIndex < candidateAttempts.length && !fileUrl; candidateIndex++) {
+			var candidate = candidateAttempts[candidateIndex];
+			var candidateRequest = Object.assign({}, downloadRequest, { csrfToken: candidate.csrfToken || downloadRequest.csrfToken });
+			fileUrl = await this._resolveLimeWireApi(limeUrl, candidateRequest, candidate.cookieHeader || cookieHeader);
+		}
 	}
 
 	if (!fileUrl && downloadRequest) {
