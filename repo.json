@@ -1,5 +1,5 @@
 {
-    "version":  "2.1.38",
+    "version":  "2.1.39",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
@@ -53,7 +53,7 @@
                        {
                            "id":  "freemagazines",
                            "name":  "FreeMagazines.top",
-                           "version":  "1.1.6-cinder",
+                           "version":  "1.1.7-cinder",
                            "description":  "Browse and search PDF magazines from FreeMagazines.top with on-device resolution.",
                            "contentType":  "magazine",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/freemagazines.js",

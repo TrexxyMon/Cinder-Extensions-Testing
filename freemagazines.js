@@ -2,7 +2,7 @@ var FreeMagazinesSource = {};
 
 FreeMagazinesSource.id = "freemagazines";
 FreeMagazinesSource.name = "FreeMagazines.top";
-FreeMagazinesSource.version = "1.1.6-cinder";
+FreeMagazinesSource.version = "1.1.7-cinder";
 FreeMagazinesSource.icon = "\uD83D\uDCF0";
 FreeMagazinesSource.description = "Browse and search PDF magazines from FreeMagazines.top with on-device resolution.";
 FreeMagazinesSource.contentType = "magazine";
@@ -469,7 +469,6 @@ FreeMagazinesSource.resolve = async function(item) {
 	if (!limeUrl) throw new Error("No LimeWire download link found on the magazine page.");
 
 	var fileName = this._slugToFileName(item && item.title);
-	var fileUrl = "";
 
 	cinder.log("[FreeMagazines] Resolving LimeWire route data: " + limeUrl);
 	var limePage = await cinder.fetch(limeUrl, {
@@ -485,58 +484,27 @@ FreeMagazinesSource.resolve = async function(item) {
 	if (this._isLimeWireUnavailable(limeHtml)) {
 		throw new Error("The magazine host link is no longer available.");
 	}
-	var downloadRequest = this._extractLimeWireDownloadRequest(limeHtml);
-	if (downloadRequest) {
-		if (downloadRequest.fileName) {
-			fileName = this._slugToFileName(downloadRequest.fileName.replace(/\.(?:pdf|epub|cbz|cbr)$/i, ""));
-		}
-		cinder.log("[FreeMagazines] LimeWire direct storage URLs are encrypted; using browser download fallbacks only.");
+	var routeDownload = this._extractLimeWireDownloadRequest(limeHtml);
+	if (routeDownload && routeDownload.fileName) {
+		fileName = this._slugToFileName(routeDownload.fileName.replace(/\.(?:pdf|epub|cbz|cbr)$/i, ""));
 	}
 
-	if (!fileUrl) {
-		cinder.log("[FreeMagazines] Capturing LimeWire download API as fallback: " + limeUrl);
-		var captured = await cinder.fetchBrowserCaptured(limeUrl, {
-			headers: {
-				"Referer": this.BASE_URL + "/",
-				"X-Cinder-Capture-Url-Includes": "api.limewire.com/sharing/download/",
-				"X-Cinder-Max-Wait-Ms": "12000",
-				"X-Cinder-Suppress-Interactive": "1",
-			},
-		});
-		fileUrl = captured && captured.data ? this._pickDownloadUrl(captured.data) : "";
-	}
-
-	if (!fileUrl) {
-		cinder.warn("[FreeMagazines] Browser capture did not expose a file URL; trying browser binary fallback.");
-		var binary = await cinder.fetchBrowserBinary(limeUrl, {
-			headers: {
-				"Referer": this.BASE_URL + "/",
-				"X-Cinder-Browser-Context-Url": limeUrl,
-			},
-		});
-		if (binary && binary.data) {
-			if (typeof binary.data === "string" && binary.data.indexOf("URL:") === 0) {
-				var candidateUrl = this._normalizeUrl(binary.data.substring(4));
-				if (candidateUrl.toLowerCase().indexOf("strg.com/limewire/") < 0) {
-					fileUrl = candidateUrl;
-				}
-			} else if (String(binary.data).substring(0, 4) === "JVBE") {
-				return {
-					url: "data:application/pdf;base64," + binary.data,
-					fileName: this._slugToFileName(item && item.title),
-				};
-			}
-		}
-	}
-
-	if (!fileUrl) throw new Error("Could not resolve the decrypted magazine PDF URL on this device.");
-
+	cinder.log("[FreeMagazines] Using browser click capture for LimeWire download: " + limeUrl);
 	return {
-		url: fileUrl,
+		url: limeUrl,
 		fileName: fileName,
 		headers: {
-			"Referer": limeUrl,
+			"Referer": this.BASE_URL + "/",
 			"User-Agent": this._headers()["User-Agent"],
+			"X-Cinder-Expect-Interstitial": "1",
+		},
+		downloadRequest: {
+			method: "GET",
+			useBrowser: true,
+			browserClickDownload: true,
+			browserCaptureBlob: true,
+			browserIgnoreNativeDownloadUrl: true,
+			browserMaxWaitMs: 90000,
 		},
 	};
 };
