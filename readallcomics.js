@@ -2,7 +2,7 @@ var ReadAllComics = {};
 
 ReadAllComics.id = "readallcomics";
 ReadAllComics.name = "ReadAllComics";
-ReadAllComics.version = "0.1.0-cinder";
+ReadAllComics.version = "0.1.1-cinder";
 ReadAllComics.icon = "RAC";
 ReadAllComics.description = "Read western comics from ReadAllComics.";
 ReadAllComics.contentType = "comics";
@@ -79,6 +79,13 @@ ReadAllComics._absUrl = function(value) {
   return this.BASE_URL + "/" + url.replace(/^\/+/, "");
 };
 
+ReadAllComics._firstSrcsetUrl = function(value) {
+  var srcset = this._decode(value);
+  if (!srcset) return "";
+  var first = srcset.split(",")[0] || "";
+  return first.trim().split(/\s+/)[0] || "";
+};
+
 ReadAllComics._pathFromUrl = function(value) {
   var raw = String(value || "").trim();
   if (!raw) return "";
@@ -139,7 +146,10 @@ ReadAllComics._imageFromHtml = function(html) {
   return this._absUrl(
     this._attr(html, "data-src") ||
     this._attr(html, "data-lazy-src") ||
-    this._attr(html, "src")
+    this._attr(html, "data-original") ||
+    this._attr(html, "data-lazy") ||
+    this._attr(html, "src") ||
+    this._firstSrcsetUrl(this._attr(html, "data-srcset") || this._attr(html, "srcset"))
   );
 };
 
@@ -366,9 +376,11 @@ ReadAllComics.getChapters = async function(mangaId) {
 
 ReadAllComics._isComicImage = function(url) {
   if (!url) return false;
-  if (!/\.(?:jpg|jpeg|png|webp)(?:[?#]|$)/i.test(url)) return false;
   if (/logo|cropped-logo|avatar|gravatar|default\.png|wp-content\/uploads\/2020\/02\/logo/i.test(url)) return false;
-  return /blogger\.googleusercontent\.com|bp\.blogspot\.com|readallcomics\.com\/wp-content\/uploads/i.test(url);
+  var hasImageExtension = /\.(?:jpg|jpeg|png|webp)(?:[?#]|$)/i.test(url);
+  var trustedExternalHost = /blogger\.googleusercontent\.com|(?:^|\/\/)[0-9]\.bp\.blogspot\.com|bp\.blogspot\.com|blogspot\.com|googleusercontent\.com|ggpht\.com/i.test(url);
+  var trustedUploadHost = /readallcomics\.com\/wp-content\/uploads/i.test(url);
+  return trustedExternalHost || (trustedUploadHost && hasImageExtension);
 };
 
 ReadAllComics.getPages = async function(chapterId) {

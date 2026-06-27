@@ -1,5 +1,5 @@
 {
-    "version":  "2.1.55",
+    "version":  "2.1.56",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
@@ -127,7 +127,7 @@
                        {
                            "id":  "readallcomics",
                            "name":  "ReadAllComics",
-                           "version":  "0.1.0-cinder",
+                           "version":  "0.1.1-cinder",
                            "description":  "Read western comics from ReadAllComics.",
                            "contentType":  "comics",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/readallcomics.js",
