@@ -13,9 +13,11 @@ https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/repo.
 [TrexxyMon/Cinder-Extensions-Testing](https://github.com/TrexxyMon/Cinder-Extensions-Testing)
 
 ## Available Extensions
+- **ReadAllComics**: Reads western comics from ReadAllComics with chaptered image pages.
 - **Z-Library (Direct)**: Scrapes Z-Library mirrors with IP rotation and Cloudflare bypass.
 - **FreeMagazines.top**: Searches and browses PDF magazines with on-device link resolution, no external proxy.
 - **JNovels**: Searches JNovels light novel EPUB/PDF posts with on-device link resolution.
 
 ## Disclaimer
 These extensions are for testing purposes only. Please respect copyright laws and the terms of service of the respective providers.
+

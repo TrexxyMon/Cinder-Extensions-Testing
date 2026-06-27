@@ -1,5 +1,5 @@
 {
-    "version":  "2.1.54",
+    "version":  "2.1.55",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
@@ -116,6 +116,21 @@
                            "description":  "Read western comics from ComicHubFree.",
                            "contentType":  "comics",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/comichubfree.js",
+                           "minCinderVersion":  "2.0.0",
+                           "contentTypes":  [
+                                                "comic"
+                                            ],
+                           "contentSubtypes":  [
+                                                   "westernComic"
+                                               ]
+                       },
+                       {
+                           "id":  "readallcomics",
+                           "name":  "ReadAllComics",
+                           "version":  "0.1.0-cinder",
+                           "description":  "Read western comics from ReadAllComics.",
+                           "contentType":  "comics",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/readallcomics.js",
                            "minCinderVersion":  "2.0.0",
                            "contentTypes":  [
                                                 "comic"
