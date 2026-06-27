@@ -1,5 +1,5 @@
 {
-    "version":  "2.1.52",
+    "version":  "2.1.53",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
@@ -122,6 +122,24 @@
                                             ],
                            "contentSubtypes":  [
                                                    "westernComic"
+                                               ]
+                       },
+                       {
+                           "id":  "webtoons",
+                           "name":  "WEBTOON",
+                           "version":  "0.1.0-cinder",
+                           "description":  "Read public, web-visible WEBTOON Originals and Canvas episodes.",
+                           "contentType":  "manga",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/webtoons.js",
+                           "minCinderVersion":  "2.0.0",
+                           "contentTypes":  [
+                                                "manga",
+                                                "comic"
+                                            ],
+                           "contentSubtypes":  [
+                                                   "webtoon",
+                                                   "manhwa",
+                                                   "comicStrip"
                                                ]
                        }
                    ]
