@@ -2,7 +2,7 @@ var NovelFireSource = {};
 
 NovelFireSource.id = "novelfire";
 NovelFireSource.name = "Novel Fire";
-NovelFireSource.version = "0.1.4-cinder";
+NovelFireSource.version = "0.1.5-cinder";
 NovelFireSource.icon = "NF";
 NovelFireSource.description = "Search and build public chaptered web novels from Novel Fire into EPUB on device. No debrid required.";
 NovelFireSource.contentType = "books";
@@ -308,6 +308,14 @@ NovelFireSource._chapterNumber = function(url, title, fallback) {
 	return isNaN(number) ? fallback : number;
 };
 
+NovelFireSource._chapterSortValue = function(chapter) {
+	var value = Number(chapter && chapter.chapterNumber);
+	if (!isNaN(value) && value > 0) return value;
+	value = Number(chapter && chapter.index);
+	if (!isNaN(value) && value > 0) return value;
+	return 0;
+};
+
 NovelFireSource._chapterCountFromHtml = function(html) {
 	var text = String(html || "");
 	var patterns = [
@@ -350,12 +358,14 @@ NovelFireSource._parseChapterLinks = function(html, bookUrl) {
 			id: chapterUrl,
 			title: title,
 			index: chapterNumber,
+			chapterNumber: chapterNumber,
 			url: chapterUrl,
 			datePublished: dateMatch && dateMatch[1] ? dateMatch[1] : undefined,
 		});
 	}
+	var self = this;
 	chapters.sort(function(a, b) {
-		return (Number(a.index) || 0) - (Number(b.index) || 0);
+		return self._chapterSortValue(a) - self._chapterSortValue(b);
 	});
 	for (var i = 0; i < chapters.length; i++) {
 		chapters[i].index = i + 1;
@@ -386,7 +396,7 @@ NovelFireSource._mergeChapters = function(target, additions) {
 		target.push(additions[j]);
 	}
 	target.sort(function(a, b) {
-		return (Number(a.index) || 0) - (Number(b.index) || 0);
+		return NovelFireSource._chapterSortValue(a) - NovelFireSource._chapterSortValue(b);
 	});
 	for (var n = 0; n < target.length; n++) {
 		target[n].index = n + 1;

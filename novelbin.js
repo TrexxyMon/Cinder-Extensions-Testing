@@ -2,7 +2,7 @@ var NovelBinSource = {};
 
 NovelBinSource.id = "novelbin";
 NovelBinSource.name = "NovelBin";
-NovelBinSource.version = "0.1.4-cinder";
+NovelBinSource.version = "0.1.5-cinder";
 NovelBinSource.icon = "NB";
 NovelBinSource.description = "Search and build public chaptered web novels from NovelBin into EPUB on device. No debrid required.";
 NovelBinSource.contentType = "books";
@@ -199,12 +199,9 @@ NovelBinSource._fetchHtml = async function(url, referer, expectedKind) {
 			if (response && response.status >= 200 && response.status < 300 && directHtml && this._hasExpectedHtml(directHtml, expectedKind)) {
 				return directHtml;
 			}
-			if (lastStatus >= 520 && lastStatus <= 524) {
-				break;
-			}
 		} catch (_) {}
 
-		if (cinder.fetchBrowser && lastStatus !== 0) {
+		if (cinder.fetchBrowser) {
 			response = await cinder.fetchBrowser(url, {
 				headers: this._browserHeaders(referer, expectedKind),
 				timeout: 18000,
@@ -374,6 +371,14 @@ NovelBinSource._chapterNumber = function(url, title, fallback) {
 	return isNaN(number) ? fallback : number;
 };
 
+NovelBinSource._chapterSortValue = function(chapter) {
+	var value = Number(chapter && chapter.chapterNumber);
+	if (!isNaN(value) && value > 0) return value;
+	value = Number(chapter && chapter.index);
+	if (!isNaN(value) && value > 0) return value;
+	return 0;
+};
+
 NovelBinSource._parseChapterLinks = function(html, bookUrl) {
 	var chapters = [];
 	var seen = {};
@@ -397,12 +402,14 @@ NovelBinSource._parseChapterLinks = function(html, bookUrl) {
 			id: chapterUrl,
 			title: title,
 			index: chapterNumber,
+			chapterNumber: chapterNumber,
 			url: chapterUrl,
 			datePublished: dateMatch && dateMatch[1] ? dateMatch[1] : undefined,
 		});
 	}
+	var self = this;
 	chapters.sort(function(a, b) {
-		return (Number(a.index) || 0) - (Number(b.index) || 0);
+		return self._chapterSortValue(a) - self._chapterSortValue(b);
 	});
 	for (var i = 0; i < chapters.length; i++) {
 		chapters[i].index = i + 1;
@@ -433,7 +440,7 @@ NovelBinSource._mergeChapters = function(target, additions) {
 		target.push(additions[j]);
 	}
 	target.sort(function(a, b) {
-		return (Number(a.index) || 0) - (Number(b.index) || 0);
+		return NovelBinSource._chapterSortValue(a) - NovelBinSource._chapterSortValue(b);
 	});
 	for (var n = 0; n < target.length; n++) {
 		target[n].index = n + 1;
