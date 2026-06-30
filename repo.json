@@ -1,5 +1,5 @@
 {
-    "version":  "2.1.57",
+    "version":  "2.1.58",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
@@ -61,6 +61,23 @@
                            "contentTypes":  [
                                                 "ebook",
                                                 "webnovel"
+                                            ],
+                           "contentSubtypes":  [
+                                                   "lightNovel",
+                                                   "webFiction"
+                                               ]
+                       },
+                       {
+                           "id":  "witchculttranslation",
+                           "name":  "Witch Cult Translations",
+                           "version":  "0.1.0",
+                           "description":  "Read public chaptered Re:Zero web novel fan translations from Witch Cult Translations and package arcs into EPUB on device. No debrid required.",
+                           "contentType":  "books",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/witchculttranslation.js",
+                           "minCinderVersion":  "2.0.0",
+                           "contentTypes":  [
+                                                "webnovel",
+                                                "ebook"
                                             ],
                            "contentSubtypes":  [
                                                    "lightNovel",
