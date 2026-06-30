@@ -2,7 +2,7 @@ var NovelBinSource = {};
 
 NovelBinSource.id = "novelbin";
 NovelBinSource.name = "NovelBin";
-NovelBinSource.version = "0.1.5-cinder";
+NovelBinSource.version = "0.1.6-cinder";
 NovelBinSource.icon = "NB";
 NovelBinSource.description = "Search and build public chaptered web novels from NovelBin into EPUB on device. No debrid required.";
 NovelBinSource.contentType = "books";
@@ -311,6 +311,42 @@ NovelBinSource._chapterCountNear = function(html, index) {
 	return countMatch ? countMatch[1].replace(/,/g, "") + " chapters" : "";
 };
 
+NovelBinSource._cleanDescriptionText = function(html) {
+	var text = String(html || "")
+		.replace(/<script[\s\S]*?<\/script>/gi, " ")
+		.replace(/<style[\s\S]*?<\/style>/gi, " ")
+		.replace(/<!--[\s\S]*?-->/g, " ")
+		.replace(/<br\s*\/?>/gi, "\n")
+		.replace(/<\/(?:p|div|section|article)>/gi, "\n")
+		.replace(/<[^>]*>/g, " ");
+	text = this._decode(text)
+		.split(/\n+/)
+		.map(function(line) {
+			return line.replace(/\s+/g, " ").trim();
+		})
+		.filter(function(line) {
+			return line && !/\.\.\.\s*read\s+more\s*$/i.test(line) && !/^read\s+more$/i.test(line) && !/^collapse$/i.test(line);
+		})
+		.join("\n\n");
+	return text
+		.replace(/\bRead\s+more\b/gi, "")
+		.replace(/\bCollapse\b/gi, "")
+		.replace(/[ \t]{2,}/g, " ")
+		.replace(/\n{3,}/g, "\n\n")
+		.trim();
+};
+
+NovelBinSource._extractBookDescription = function(html) {
+	var text = String(html || "");
+	var tab = this._elementByIdHtml(text, "tab-description");
+	var descMatch = String(tab || text).match(/<div\b[^>]*class=["'][^"']*\bdesc-text\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i);
+	var description = descMatch && descMatch[1] ? this._cleanDescriptionText(descMatch[1]) : "";
+	if (description && description.length > 80) return description;
+	var meta = this._extractMeta(text, "description") || this._extractMeta(text, "og:description");
+	meta = this._cleanDescriptionText(meta);
+	return meta.replace(/\s*Novel\s+Bin:\s*/i, ": ").replace(/\.\.\.\s*Read more\.?\.?$/i, "").trim();
+};
+
 NovelBinSource._parseSearchResults = function(html) {
 	var body = String(html || "");
 	var cutoff = body.search(/(?:popular|recommended|latest)[\s\S]{0,120}novels/i);
@@ -355,9 +391,22 @@ NovelBinSource.search = async function(query, page) {
 	return this._parseSearchResults(html).slice(0, 40);
 };
 
+NovelBinSource.getBookDetails = async function(bookId) {
+	await this._getBaseUrl();
+	var bookUrl = this._bookUrl(bookId);
+	var html = await this._fetchHtml(bookUrl, this._baseUrl() + "/", "details");
+	return {
+		id: this._bookPath(bookUrl) || bookId,
+		title: this._extractTitleFromBookPage(html, ""),
+		author: this._extractAuthorNear(html, 0),
+		cover: this._extractMeta(html, "og:image") || this._extractImageNear(html, 0, bookUrl),
+		description: this._extractBookDescription(html),
+	};
+};
+
 NovelBinSource._extractTitleFromBookPage = function(html, fallback) {
 	var title = this._extractMeta(html, "og:title");
-	if (title) return title.replace(/\s+-\s+NovelBin\s*$/i, "").trim();
+	if (title) return title.replace(/\s+-\s+NovelBin\s*$/i, "").replace(/\s+Online\s+For\s+Free\s*$/i, "").trim();
 	var match = String(html || "").match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)
 		|| String(html || "").match(/class=["'][^"']*(?:novel-title|title)[^"']*["'][^>]*>([\s\S]*?)<\/(?:h1|h2|h3|div)>/i);
 	return match ? this._stripTags(match[1]) : fallback;

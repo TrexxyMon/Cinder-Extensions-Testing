@@ -2,7 +2,7 @@ var NovelFireSource = {};
 
 NovelFireSource.id = "novelfire";
 NovelFireSource.name = "Novel Fire";
-NovelFireSource.version = "0.1.5-cinder";
+NovelFireSource.version = "0.1.6-cinder";
 NovelFireSource.icon = "NF";
 NovelFireSource.description = "Search and build public chaptered web novels from Novel Fire into EPUB on device. No debrid required.";
 NovelFireSource.contentType = "books";
@@ -19,6 +19,9 @@ NovelFireSource.capabilities = {
 
 NovelFireSource.BASE_URL = "https://novelfire.net";
 NovelFireSource.DEFAULT_MAX_BUILD_CHAPTERS = 800;
+NovelFireSource.CHAPTER_REQUEST_DELAY_MS = 650;
+NovelFireSource._chapterFetchQueue = Promise.resolve();
+NovelFireSource._lastChapterFetchAt = 0;
 
 NovelFireSource.getSettings = function() {
 	return [
@@ -90,6 +93,20 @@ NovelFireSource._sleep = function(ms) {
 	return new Promise(function(resolve) {
 		setTimeout(resolve, ms);
 	});
+};
+
+NovelFireSource._runChapterFetchQueued = function(task) {
+	var self = this;
+	var previous = this._chapterFetchQueue || Promise.resolve();
+	var run = previous.catch(function() {}).then(async function() {
+		var now = Date.now();
+		var waitMs = Math.max(0, self.CHAPTER_REQUEST_DELAY_MS - (now - (self._lastChapterFetchAt || 0)));
+		if (waitMs > 0) await self._sleep(waitMs);
+		self._lastChapterFetchAt = Date.now();
+		return task();
+	});
+	this._chapterFetchQueue = run.then(function() {}, function() {});
+	return run;
 };
 
 NovelFireSource._decode = function(text) {
@@ -166,7 +183,7 @@ NovelFireSource._absoluteUrl = function(url, baseUrl) {
 	return this.BASE_URL + "/" + value.replace(/^\/+/, "");
 };
 
-NovelFireSource._fetchHtml = async function(url, referer, expectedKind) {
+NovelFireSource._fetchHtmlNow = async function(url, referer, expectedKind) {
 	url = this._cleanUrlString(url);
 	referer = this._cleanUrlString(referer);
 	var response = null;
@@ -197,12 +214,22 @@ NovelFireSource._fetchHtml = async function(url, referer, expectedKind) {
 		}
 
 		if (attempt < 3 && (!lastStatus || lastStatus === 429 || lastStatus >= 500)) {
-			await this._sleep(900 * attempt);
+			await this._sleep(lastStatus === 429 ? 2500 * attempt : 900 * attempt);
 			continue;
 		}
 		break;
 	}
 	throw new Error("Novel Fire request failed" + (lastStatus ? " (HTTP " + lastStatus + ")" : "") + ": " + url);
+};
+
+NovelFireSource._fetchHtml = async function(url, referer, expectedKind) {
+	if (expectedKind === "chapter") {
+		var self = this;
+		return this._runChapterFetchQueued(function() {
+			return self._fetchHtmlNow(url, referer, expectedKind);
+		});
+	}
+	return this._fetchHtmlNow(url, referer, expectedKind);
 };
 
 NovelFireSource._searchUrl = function(query, page) {
@@ -255,6 +282,83 @@ NovelFireSource._extractMeta = function(html, name) {
 		if (match && match[1]) return this._decode(match[1]);
 	}
 	return "";
+};
+
+NovelFireSource._extractItempropMeta = function(html, name) {
+	var key = String(name || "").replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+	var patterns = [
+		new RegExp("<meta[^>]+itemprop=[\"']" + key + "[\"'][^>]+content=[\"']([^\"']+)[\"'][^>]*>", "i"),
+		new RegExp("<meta[^>]+content=[\"']([^\"']+)[\"'][^>]+itemprop=[\"']" + key + "[\"'][^>]*>", "i"),
+	];
+	for (var i = 0; i < patterns.length; i++) {
+		var match = String(html || "").match(patterns[i]);
+		if (match && match[1]) return this._decode(match[1]);
+	}
+	return "";
+};
+
+NovelFireSource._cleanDescriptionText = function(html) {
+	var text = String(html || "")
+		.replace(/<script[\s\S]*?<\/script>/gi, " ")
+		.replace(/<style[\s\S]*?<\/style>/gi, " ")
+		.replace(/<!--[\s\S]*?-->/g, " ")
+		.replace(/<br\s*\/?>/gi, "\n")
+		.replace(/<\/(?:p|div|section|article)>/gi, "\n")
+		.replace(/<[^>]*>/g, " ");
+	return this._decode(text)
+		.replace(/\bShow More\b/gi, "")
+		.replace(/\bCollapse\b/gi, "")
+		.split(/\n+/)
+		.map(function(line) {
+			return line.replace(/\s+/g, " ").trim();
+		})
+		.filter(Boolean)
+		.join("\n\n")
+		.replace(/\n{3,}/g, "\n\n")
+		.trim();
+};
+
+NovelFireSource._extractBookDescription = function(html) {
+	var text = String(html || "");
+	var summaryMatch = text.match(/<div\b[^>]*class=["'][^"']*\bsummary\b[^"']*["'][^>]*>[\s\S]*?<div\b[^>]*class=["'][^"']*\bcontent\b[^"']*["'][^>]*>([\s\S]*?)<\/div>\s*<\/div>/i);
+	var summary = summaryMatch && summaryMatch[1] ? this._cleanDescriptionText(summaryMatch[1]) : "";
+	if (summary && summary.length > 60) return summary;
+	return this._cleanDescriptionText(
+		this._extractItempropMeta(text, "description") ||
+		this._extractMeta(text, "og:description") ||
+		this._extractMeta(text, "description"),
+	);
+};
+
+NovelFireSource._extractBookAuthor = function(html) {
+	var match = String(html || "").match(/itemprop=["']author["'][^>]*>([\s\S]*?)<\/span>/i)
+		|| String(html || "").match(/class=["'][^"']*\bauthor\b[^"']*["'][^>]*>[\s\S]*?<a\b[^>]*>([\s\S]*?)<\/a>/i);
+	return match && match[1] ? this._stripTags(match[1]) : "";
+};
+
+NovelFireSource._extractGenres = function(html) {
+	var genres = [];
+	var section = (String(html || "").match(/<div\b[^>]*class=["'][^"']*\bcategories\b[^"']*["'][^>]*>[\s\S]*?<h4>Genres<\/h4>([\s\S]*?)<\/div>/i) || [])[1] || "";
+	var regex = /<a\b[^>]*class=["'][^"']*\bproperty-item\b[^"']*["'][^>]*>([\s\S]*?)<\/a>/gi;
+	var match;
+	while ((match = regex.exec(section)) !== null) {
+		var genre = this._stripTags(match[1]);
+		if (genre && genres.indexOf(genre) === -1) genres.push(genre);
+	}
+	return genres;
+};
+
+NovelFireSource.getBookDetails = async function(bookId) {
+	var bookUrl = this._bookUrl(bookId);
+	var html = await this._fetchHtml(bookUrl, this.BASE_URL + "/", "details");
+	return {
+		id: this._bookPath(bookUrl) || bookId,
+		title: this._extractMeta(html, "og:title").replace(/\s+-\s+Novel Fire\s*$/i, "").trim() || this._decode(this._slugFromPath(bookUrl).replace(/-/g, " ")),
+		author: this._extractBookAuthor(html),
+		cover: this._extractMeta(html, "og:image") || this._extractItempropMeta(html, "image"),
+		description: this._extractBookDescription(html),
+		genres: this._extractGenres(html),
+	};
 };
 
 NovelFireSource._parseSearchResults = function(html) {
