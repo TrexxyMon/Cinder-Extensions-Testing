@@ -2,7 +2,7 @@ var NovelBinSource = {};
 
 NovelBinSource.id = "novelbin";
 NovelBinSource.name = "NovelBin";
-NovelBinSource.version = "0.1.2-cinder";
+NovelBinSource.version = "0.1.3-cinder";
 NovelBinSource.icon = "NB";
 NovelBinSource.description = "Search and build public chaptered web novels from NovelBin into EPUB on device. No debrid required.";
 NovelBinSource.contentType = "books";
@@ -34,7 +34,7 @@ NovelBinSource.getSettings = function() {
 NovelBinSource._activeBaseUrl = "";
 
 NovelBinSource._normalizeBaseUrl = function(value) {
-	var base = String(value || "").trim();
+	var base = String(value || "").trim().replace(/\s+/g, "");
 	if (!base) return this.BASE_URL;
 	if (!/^https?:\/\//i.test(base)) base = "https://" + base;
 	return base.replace(/\/+$/, "");
@@ -163,7 +163,7 @@ NovelBinSource._fetchHtml = async function(url, referer, expectedKind) {
 			lastStatus = response && response.status ? Number(response.status) : 0;
 			var directHtml = response && response.data != null ? String(response.data || "") : "";
 			lastLength = directHtml.length || lastLength;
-			if (response && response.status >= 200 && response.status < 300 && directHtml && !this._looksBlockedHtml(directHtml) && this._hasExpectedHtml(directHtml, expectedKind)) {
+			if (response && response.status >= 200 && response.status < 300 && directHtml && this._hasExpectedHtml(directHtml, expectedKind)) {
 				return directHtml;
 			}
 			if (lastStatus >= 520 && lastStatus <= 524) {
@@ -179,7 +179,7 @@ NovelBinSource._fetchHtml = async function(url, referer, expectedKind) {
 			lastStatus = response && response.status ? Number(response.status) : lastStatus;
 			var browserHtml = response && response.data != null ? String(response.data || "") : "";
 			lastLength = browserHtml.length || lastLength;
-			if (response && response.status >= 200 && response.status < 300 && browserHtml && !this._looksBlockedHtml(browserHtml) && this._hasExpectedHtml(browserHtml, expectedKind)) {
+			if (response && response.status >= 200 && response.status < 300 && browserHtml && this._hasExpectedHtml(browserHtml, expectedKind)) {
 				return browserHtml;
 			}
 		}

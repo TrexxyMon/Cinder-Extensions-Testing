@@ -2,7 +2,7 @@ var NovelFireSource = {};
 
 NovelFireSource.id = "novelfire";
 NovelFireSource.name = "Novel Fire";
-NovelFireSource.version = "0.1.2-cinder";
+NovelFireSource.version = "0.1.3-cinder";
 NovelFireSource.icon = "NF";
 NovelFireSource.description = "Search and build public chaptered web novels from Novel Fire into EPUB on device. No debrid required.";
 NovelFireSource.contentType = "books";
@@ -147,7 +147,7 @@ NovelFireSource._fetchHtml = async function(url, referer, expectedKind) {
 			});
 			lastStatus = response && response.status ? Number(response.status) : 0;
 			var directHtml = response && response.data != null ? String(response.data || "") : "";
-			if (response && response.status >= 200 && response.status < 300 && directHtml && !this._looksBlockedHtml(directHtml) && this._hasExpectedHtml(directHtml, expectedKind)) {
+			if (response && response.status >= 200 && response.status < 300 && directHtml && this._hasExpectedHtml(directHtml, expectedKind)) {
 				return directHtml;
 			}
 		} catch (_) {}
@@ -159,7 +159,7 @@ NovelFireSource._fetchHtml = async function(url, referer, expectedKind) {
 			});
 			lastStatus = response && response.status ? Number(response.status) : lastStatus;
 			var browserHtml = response && response.data != null ? String(response.data || "") : "";
-			if (response && response.status >= 200 && response.status < 300 && browserHtml && !this._looksBlockedHtml(browserHtml) && this._hasExpectedHtml(browserHtml, expectedKind)) {
+			if (response && response.status >= 200 && response.status < 300 && browserHtml && this._hasExpectedHtml(browserHtml, expectedKind)) {
 				return browserHtml;
 			}
 		}
