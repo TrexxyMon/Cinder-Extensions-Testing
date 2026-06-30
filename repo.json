@@ -1,5 +1,5 @@
 {
-    "version":  "2.1.59",
+    "version":  "2.1.60",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
@@ -65,6 +65,46 @@
                            "contentSubtypes":  [
                                                    "lightNovel",
                                                    "webFiction"
+                                               ]
+                       },
+                       {
+                           "id":  "novelbin",
+                           "name":  "NovelBin",
+                           "version":  "0.1.0-cinder",
+                           "description":  "Search and build public chaptered web novels from NovelBin into EPUB on device. No debrid required.",
+                           "contentType":  "books",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/novelbin.js",
+                           "minCinderVersion":  "2.0.0",
+                           "contentTypes":  [
+                                                "webnovel",
+                                                "ebook"
+                                            ],
+                           "contentSubtypes":  [
+                                                   "webFiction",
+                                                   "lightNovel",
+                                                   "wuxia",
+                                                   "xianxia",
+                                                   "xuanhuan"
+                                               ]
+                       },
+                       {
+                           "id":  "novelfire",
+                           "name":  "Novel Fire",
+                           "version":  "0.1.0-cinder",
+                           "description":  "Search and build public chaptered web novels from Novel Fire into EPUB on device. No debrid required.",
+                           "contentType":  "books",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/novelfire.js",
+                           "minCinderVersion":  "2.0.0",
+                           "contentTypes":  [
+                                                "webnovel",
+                                                "ebook"
+                                            ],
+                           "contentSubtypes":  [
+                                                   "webFiction",
+                                                   "lightNovel",
+                                                   "wuxia",
+                                                   "xianxia",
+                                                   "xuanhuan"
                                                ]
                        },
                        {
