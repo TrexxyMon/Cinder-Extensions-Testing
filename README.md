@@ -17,7 +17,6 @@ https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/repo.
 - **Z-Library (Direct)**: Scrapes Z-Library mirrors with IP rotation and Cloudflare bypass.
 - **FreeMagazines.top**: Searches and browses PDF magazines with on-device link resolution, no external proxy.
 - **JNovels**: Searches JNovels light novel EPUB/PDF posts with on-device link resolution.
-- **Witch Cult Translations**: Reads public chaptered Re:Zero web novel fan translations and packages arcs into EPUB on device. No debrid required.
 
 ## Disclaimer
 These extensions are for testing purposes only. Please respect copyright laws and the terms of service of the respective providers.
