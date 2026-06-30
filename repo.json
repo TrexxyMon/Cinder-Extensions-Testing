@@ -70,7 +70,7 @@
                        {
                            "id":  "novelbin",
                            "name":  "NovelBin",
-                           "version":  "0.1.3-cinder",
+                           "version":  "0.1.4-cinder",
                            "description":  "Search and build public chaptered web novels from NovelBin into EPUB on device. No debrid required.",
                            "contentType":  "books",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/novelbin.js",
@@ -90,7 +90,7 @@
                        {
                            "id":  "novelfire",
                            "name":  "Novel Fire",
-                           "version":  "0.1.3-cinder",
+                           "version":  "0.1.4-cinder",
                            "description":  "Search and build public chaptered web novels from Novel Fire into EPUB on device. No debrid required.",
                            "contentType":  "books",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/novelfire.js",

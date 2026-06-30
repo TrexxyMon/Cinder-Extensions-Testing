@@ -2,7 +2,7 @@ var NovelBinSource = {};
 
 NovelBinSource.id = "novelbin";
 NovelBinSource.name = "NovelBin";
-NovelBinSource.version = "0.1.3-cinder";
+NovelBinSource.version = "0.1.4-cinder";
 NovelBinSource.icon = "NB";
 NovelBinSource.description = "Search and build public chaptered web novels from NovelBin into EPUB on device. No debrid required.";
 NovelBinSource.contentType = "books";
@@ -33,8 +33,12 @@ NovelBinSource.getSettings = function() {
 
 NovelBinSource._activeBaseUrl = "";
 
+NovelBinSource._cleanUrlString = function(value) {
+	return String(value || "").trim().replace(/[\s\u00a0\u200b-\u200d\ufeff]+/g, "");
+};
+
 NovelBinSource._normalizeBaseUrl = function(value) {
-	var base = String(value || "").trim().replace(/\s+/g, "");
+	var base = this._cleanUrlString(value).replace(/%(?:20|09|0a|0d)/gi, "");
 	if (!base) return this.BASE_URL;
 	if (!/^https?:\/\//i.test(base)) base = "https://" + base;
 	return base.replace(/\/+$/, "");
@@ -52,7 +56,8 @@ NovelBinSource._getBaseUrl = async function() {
 };
 
 NovelBinSource._baseUrl = function() {
-	return this._activeBaseUrl || this.BASE_URL;
+	this._activeBaseUrl = this._normalizeBaseUrl(this._activeBaseUrl || this.BASE_URL);
+	return this._activeBaseUrl;
 };
 
 NovelBinSource._headers = function(referer) {
@@ -136,9 +141,35 @@ NovelBinSource._stripTags = function(html) {
 		.replace(/<[^>]*>/g, " "));
 };
 
+NovelBinSource._elementByIdHtml = function(html, id) {
+	var source = String(html || "");
+	var escapedId = String(id || "").replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+	var idPattern = new RegExp("\\bid\\s*=\\s*(?:[\"']" + escapedId + "[\"']|" + escapedId + "(?=\\s|>|/))", "i");
+	var openTag = /<div\b[^>]*>/gi;
+	var open;
+	while ((open = openTag.exec(source)) !== null) {
+		if (!idPattern.test(open[0])) continue;
+		var openEnd = open.index + open[0].length;
+		var token = /<\/?div\b[^>]*>/gi;
+		token.lastIndex = openEnd;
+		var depth = 1;
+		var next;
+		while ((next = token.exec(source)) !== null) {
+			if (/^<\s*\/div/i.test(next[0])) {
+				depth -= 1;
+				if (depth === 0) return source.slice(openEnd, next.index);
+			} else {
+				depth += 1;
+			}
+		}
+		return source.slice(openEnd);
+	}
+	return "";
+};
+
 NovelBinSource._absoluteUrl = function(url, baseUrl) {
-	var value = this._decode(url || "").trim();
-	var base = baseUrl || this._baseUrl() + "/";
+	var value = this._cleanUrlString(this._decode(url || ""));
+	var base = this._cleanUrlString(baseUrl || this._baseUrl() + "/");
 	if (!value) return "";
 	if (/^https?:\/\//i.test(value)) return value;
 	if (value.indexOf("//") === 0) return "https:" + value;
@@ -151,6 +182,8 @@ NovelBinSource._absoluteUrl = function(url, baseUrl) {
 };
 
 NovelBinSource._fetchHtml = async function(url, referer, expectedKind) {
+	url = this._cleanUrlString(url);
+	referer = this._cleanUrlString(referer);
 	var response = null;
 	var lastStatus = 0;
 	var lastLength = 0;
@@ -229,7 +262,7 @@ NovelBinSource._bookUrl = function(bookId) {
 };
 
 NovelBinSource._chapterUrl = function(chapterId) {
-	var raw = String(chapterId || "").trim();
+	var raw = this._cleanUrlString(chapterId);
 	if (/^https?:\/\//i.test(raw)) return raw;
 	if (raw.charAt(0) === "/") return this._baseUrl() + raw;
 	return this._baseUrl() + "/" + raw.replace(/^\/+/, "");
@@ -438,6 +471,10 @@ NovelBinSource.getBookChapters = async function(bookId) {
 
 NovelBinSource._extractContentHtml = function(html) {
 	var text = String(html || "");
+	var chrContent = this._elementByIdHtml(text, "chr-content");
+	if (chrContent && this._stripTags(chrContent).length > 200) return chrContent;
+	var chapterContent = this._elementByIdHtml(text, "chapter-content");
+	if (chapterContent && this._stripTags(chapterContent).length > 200) return chapterContent;
 	var patterns = [
 		/<div\b[^>]*id=["']chr-content["'][^>]*>([\s\S]*?)<\/div>\s*(?:<div\b[^>]*class=["'][^"']*(?:chr-nav|chapter-nav|nav-chapter|chapternav)[^"']*["']|<script|<\/section|<\/article)/i,
 		/<div\b[^>]*id=["']chapter-content["'][^>]*>([\s\S]*?)<\/div>\s*(?:<div\b[^>]*class=["'][^"']*(?:chr-nav|chapter-nav|nav-chapter|chapternav)[^"']*["']|<script|<\/section|<\/article)/i,

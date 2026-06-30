@@ -2,7 +2,7 @@ var NovelFireSource = {};
 
 NovelFireSource.id = "novelfire";
 NovelFireSource.name = "Novel Fire";
-NovelFireSource.version = "0.1.3-cinder";
+NovelFireSource.version = "0.1.4-cinder";
 NovelFireSource.icon = "NF";
 NovelFireSource.description = "Search and build public chaptered web novels from Novel Fire into EPUB on device. No debrid required.";
 NovelFireSource.contentType = "books";
@@ -123,9 +123,39 @@ NovelFireSource._stripTags = function(html) {
 		.replace(/<[^>]*>/g, " "));
 };
 
+NovelFireSource._cleanUrlString = function(value) {
+	return String(value || "").trim().replace(/[\s\u00a0\u200b-\u200d\ufeff]+/g, "");
+};
+
+NovelFireSource._elementByIdHtml = function(html, id) {
+	var source = String(html || "");
+	var escapedId = String(id || "").replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+	var idPattern = new RegExp("\\bid\\s*=\\s*(?:[\"']" + escapedId + "[\"']|" + escapedId + "(?=\\s|>|/))", "i");
+	var openTag = /<div\b[^>]*>/gi;
+	var open;
+	while ((open = openTag.exec(source)) !== null) {
+		if (!idPattern.test(open[0])) continue;
+		var openEnd = open.index + open[0].length;
+		var token = /<\/?div\b[^>]*>/gi;
+		token.lastIndex = openEnd;
+		var depth = 1;
+		var next;
+		while ((next = token.exec(source)) !== null) {
+			if (/^<\s*\/div/i.test(next[0])) {
+				depth -= 1;
+				if (depth === 0) return source.slice(openEnd, next.index);
+			} else {
+				depth += 1;
+			}
+		}
+		return source.slice(openEnd);
+	}
+	return "";
+};
+
 NovelFireSource._absoluteUrl = function(url, baseUrl) {
-	var value = this._decode(url || "").trim();
-	var base = baseUrl || this.BASE_URL + "/";
+	var value = this._cleanUrlString(this._decode(url || ""));
+	var base = this._cleanUrlString(baseUrl || this.BASE_URL + "/");
 	if (!value) return "";
 	if (/^https?:\/\//i.test(value)) return value;
 	if (value.indexOf("//") === 0) return "https:" + value;
@@ -137,6 +167,8 @@ NovelFireSource._absoluteUrl = function(url, baseUrl) {
 };
 
 NovelFireSource._fetchHtml = async function(url, referer, expectedKind) {
+	url = this._cleanUrlString(url);
+	referer = this._cleanUrlString(referer);
 	var response = null;
 	var lastStatus = 0;
 	for (var attempt = 1; attempt <= 3; attempt++) {
@@ -199,7 +231,7 @@ NovelFireSource._bookUrl = function(bookId) {
 };
 
 NovelFireSource._chapterUrl = function(chapterId) {
-	var raw = String(chapterId || "").trim();
+	var raw = this._cleanUrlString(chapterId);
 	if (/^https?:\/\//i.test(raw)) return raw;
 	if (raw.charAt(0) === "/") return this.BASE_URL + raw;
 	return this.BASE_URL + "/" + raw.replace(/^\/+/, "");
@@ -394,6 +426,8 @@ NovelFireSource.getBookChapters = async function(bookId) {
 
 NovelFireSource._extractContentHtml = function(html) {
 	var text = String(html || "");
+	var content = this._elementByIdHtml(text, "content");
+	if (content && this._stripTags(content).length > 200) return content;
 	var patterns = [
 		/<div\b[^>]*id=["']content["'][^>]*>([\s\S]*?)<\/div>\s*(?:<div\b[^>]*class=["'][^"']*(?:box-notification|nf-ads|chapternav|report-container)[^"']*["']|<\/div>\s*<div\b[^>]*class=["'][^"']*box-notification)/i,
 		/<div\b[^>]*id=["']chapter-container["'][^>]*>[\s\S]*?<div\b[^>]*id=["']content["'][^>]*>([\s\S]*?)<\/div>/i,
