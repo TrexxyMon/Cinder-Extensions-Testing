@@ -2,7 +2,7 @@ var NovelBinSource = {};
 
 NovelBinSource.id = "novelbin";
 NovelBinSource.name = "NovelBin";
-NovelBinSource.version = "0.1.0-cinder";
+NovelBinSource.version = "0.1.1-cinder";
 NovelBinSource.icon = "NB";
 NovelBinSource.description = "Search and build public chaptered web novels from NovelBin into EPUB on device. No debrid required.";
 NovelBinSource.contentType = "books";
@@ -19,6 +19,42 @@ NovelBinSource.capabilities = {
 
 NovelBinSource.BASE_URL = "https://novelbin.com";
 
+NovelBinSource.getSettings = function() {
+	return [
+		{
+			id: "base_url",
+			label: "Base URL",
+			type: "text",
+			defaultValue: "https://novelbin.com",
+			placeholder: "https://novelbin.com",
+		},
+	];
+};
+
+NovelBinSource._activeBaseUrl = "";
+
+NovelBinSource._normalizeBaseUrl = function(value) {
+	var base = String(value || "").trim();
+	if (!base) return this.BASE_URL;
+	if (!/^https?:\/\//i.test(base)) base = "https://" + base;
+	return base.replace(/\/+$/, "");
+};
+
+NovelBinSource._getBaseUrl = async function() {
+	var configured = "";
+	try {
+		if (typeof cinder !== "undefined" && cinder.store && cinder.store.get) {
+			configured = await cinder.store.get("base_url");
+		}
+	} catch (_) {}
+	this._activeBaseUrl = this._normalizeBaseUrl(configured || this.BASE_URL);
+	return this._activeBaseUrl;
+};
+
+NovelBinSource._baseUrl = function() {
+	return this._activeBaseUrl || this.BASE_URL;
+};
+
 NovelBinSource._headers = function(referer) {
 	return {
 		"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
@@ -26,6 +62,40 @@ NovelBinSource._headers = function(referer) {
 		"Accept-Language": "en-US,en;q=0.9",
 		"Referer": referer || this.BASE_URL + "/",
 	};
+};
+
+NovelBinSource._browserHeaders = function(referer, expectedKind) {
+	var headers = this._headers(referer);
+	headers["X-Cinder-Suppress-Interactive"] = "1";
+	headers["X-Cinder-Visible-Layout"] = "1";
+	headers["X-Cinder-Wake-Page"] = "1";
+	headers["X-Cinder-Min-Wait-Ms"] = "4500";
+	headers["X-Cinder-Max-Wait-Ms"] = "18000";
+	if (expectedKind === "search") headers["X-Cinder-Wait-For-Selector"] = "a[href*='/b/'], a[href*='/novel-book/']";
+	if (expectedKind === "chapters") headers["X-Cinder-Wait-For-Selector"] = "a[href*='chapter']";
+	if (expectedKind === "chapter") headers["X-Cinder-Wait-For-Selector"] = "#chr-content, #chapter-content, .chapter-content";
+	return headers;
+};
+
+NovelBinSource._looksBlockedHtml = function(html) {
+	var text = String(html || "").toLowerCase();
+	return text.indexOf("cf-chl") >= 0 ||
+		text.indexOf("just a moment") >= 0 ||
+		text.indexOf("checking your browser") >= 0 ||
+		text.indexOf("verify you are human") >= 0 ||
+		text.indexOf("security challenge") >= 0 ||
+		text.indexOf("ddos-guard") >= 0 ||
+		text.indexOf("captcha") >= 0 ||
+		text.indexOf("error code: 522") >= 0 ||
+		text.indexOf("connection timed out") >= 0;
+};
+
+NovelBinSource._hasExpectedHtml = function(html, expectedKind) {
+	if (!expectedKind) return String(html || "").length > 100;
+	if (expectedKind === "search") return this._parseSearchResults(html).length > 0 || /href=["'][^"']*\/(?:b|novel-book)\/[^"']+/i.test(String(html || ""));
+	if (expectedKind === "chapters") return this._parseChapterLinks(html, this._baseUrl() + "/b/placeholder").length > 0 || /href=["'][^"']*chapter/i.test(String(html || ""));
+	if (expectedKind === "chapter") return !!this._extractContentHtml(html);
+	return String(html || "").length > 100;
 };
 
 NovelBinSource._sleep = function(ms) {
@@ -68,41 +138,54 @@ NovelBinSource._stripTags = function(html) {
 
 NovelBinSource._absoluteUrl = function(url, baseUrl) {
 	var value = this._decode(url || "").trim();
-	var base = baseUrl || this.BASE_URL + "/";
+	var base = baseUrl || this._baseUrl() + "/";
 	if (!value) return "";
 	if (/^https?:\/\//i.test(value)) return value;
 	if (value.indexOf("//") === 0) return "https:" + value;
 	if (typeof cinder !== "undefined" && cinder.resolveUrl) {
 		return cinder.resolveUrl(value, base);
 	}
-	if (value.charAt(0) === "/") return this.BASE_URL + value;
-	return this.BASE_URL + "/" + value.replace(/^\/+/, "");
+	var root = (String(base).match(/^https?:\/\/[^\/]+/i) || [this._baseUrl()])[0];
+	if (value.charAt(0) === "/") return root + value;
+	return root + "/" + value.replace(/^\/+/, "");
 };
 
-NovelBinSource._fetchHtml = async function(url, referer) {
+NovelBinSource._fetchHtml = async function(url, referer, expectedKind) {
 	var response = null;
 	var lastStatus = 0;
+	var lastLength = 0;
 	for (var attempt = 1; attempt <= 3; attempt++) {
 		try {
 			response = await cinder.fetch(url, {
 				headers: this._headers(referer),
-				timeout: 30000,
+				timeout: 10000,
 			});
 			lastStatus = response && response.status ? Number(response.status) : 0;
-			if (response && response.status >= 200 && response.status < 300 && response.data != null) {
-				return String(response.data || "");
+			var directHtml = response && response.data != null ? String(response.data || "") : "";
+			lastLength = directHtml.length || lastLength;
+			if (response && response.status >= 200 && response.status < 300 && directHtml && !this._looksBlockedHtml(directHtml) && this._hasExpectedHtml(directHtml, expectedKind)) {
+				return directHtml;
+			}
+			if (lastStatus >= 520 && lastStatus <= 524) {
+				break;
 			}
 		} catch (_) {}
 
-		if (cinder.fetchBrowser) {
+		if (cinder.fetchBrowser && lastStatus !== 0) {
 			response = await cinder.fetchBrowser(url, {
-				headers: this._headers(referer),
-				timeout: 35000,
+				headers: this._browserHeaders(referer, expectedKind),
+				timeout: 18000,
 			});
 			lastStatus = response && response.status ? Number(response.status) : lastStatus;
-			if (response && response.status >= 200 && response.status < 300 && response.data != null) {
-				return String(response.data || "");
+			var browserHtml = response && response.data != null ? String(response.data || "") : "";
+			lastLength = browserHtml.length || lastLength;
+			if (response && response.status >= 200 && response.status < 300 && browserHtml && !this._looksBlockedHtml(browserHtml) && this._hasExpectedHtml(browserHtml, expectedKind)) {
+				return browserHtml;
 			}
+		}
+
+		if (!lastStatus && !lastLength) {
+			break;
 		}
 
 		if (attempt < 3 && (!lastStatus || lastStatus === 429 || lastStatus >= 500)) {
@@ -112,11 +195,16 @@ NovelBinSource._fetchHtml = async function(url, referer) {
 		break;
 	}
 
-	throw new Error("NovelBin request failed" + (lastStatus ? " (HTTP " + lastStatus + ")" : "") + ": " + url);
+	var base = this._baseUrl();
+	var reason = lastStatus ? "HTTP " + lastStatus : "connection failed";
+	if (lastStatus >= 500 || lastStatus === 0 || lastLength < 100) {
+		throw new Error("NovelBin did not return a usable page from " + base + " (" + reason + "). If this host is down for your network, set a working NovelBin mirror in the extension settings.");
+	}
+	throw new Error("NovelBin request failed (" + reason + "): " + url);
 };
 
 NovelBinSource._searchUrl = function(query, page) {
-	var url = this.BASE_URL + "/search?keyword=" + encodeURIComponent(query || "");
+	var url = this._baseUrl() + "/search?keyword=" + encodeURIComponent(query || "");
 	if (page && page > 0) url += "&page=" + encodeURIComponent(page + 1);
 	return url;
 };
@@ -137,14 +225,14 @@ NovelBinSource._bookUrl = function(bookId) {
 	var path = this._bookPath(bookId);
 	if (!path) throw new Error("Invalid NovelBin book ID: " + bookId);
 	path = path.replace(/\/(?:chapters?|chapter-\d+.*)$/i, "");
-	return this.BASE_URL + path;
+	return this._baseUrl() + path;
 };
 
 NovelBinSource._chapterUrl = function(chapterId) {
 	var raw = String(chapterId || "").trim();
 	if (/^https?:\/\//i.test(raw)) return raw;
-	if (raw.charAt(0) === "/") return this.BASE_URL + raw;
-	return this.BASE_URL + "/" + raw.replace(/^\/+/, "");
+	if (raw.charAt(0) === "/") return this._baseUrl() + raw;
+	return this._baseUrl() + "/" + raw.replace(/^\/+/, "");
 };
 
 NovelBinSource._slugFromBookPath = function(bookPath) {
@@ -217,8 +305,8 @@ NovelBinSource._parseSearchResults = function(html) {
 			id: bookPath,
 			title: title,
 			author: this._extractAuthorNear(body, match.index),
-			cover: this._extractImageNear(body, match.index, this.BASE_URL + "/"),
-			url: this.BASE_URL + bookPath,
+			cover: this._extractImageNear(body, match.index, this._baseUrl() + "/"),
+			url: this._baseUrl() + bookPath,
 			format: "epub",
 			size: this._chapterCountNear(body, match.index),
 			source: "NovelBin",
@@ -232,7 +320,8 @@ NovelBinSource._parseSearchResults = function(html) {
 
 NovelBinSource.search = async function(query, page) {
 	if (!query || !String(query).trim()) return [];
-	var html = await this._fetchHtml(this._searchUrl(String(query).trim(), page || 0), this.BASE_URL + "/");
+	await this._getBaseUrl();
+	var html = await this._fetchHtml(this._searchUrl(String(query).trim(), page || 0), this._baseUrl() + "/", "search");
 	return this._parseSearchResults(html).slice(0, 40);
 };
 
@@ -320,8 +409,9 @@ NovelBinSource._mergeChapters = function(target, additions) {
 };
 
 NovelBinSource.getBookChapters = async function(bookId) {
+	await this._getBaseUrl();
 	var bookUrl = this._bookUrl(bookId);
-	var html = await this._fetchHtml(bookUrl, this.BASE_URL + "/");
+	var html = await this._fetchHtml(bookUrl, this._baseUrl() + "/", "chapters");
 	var chapters = this._parseChapterLinks(html, bookUrl);
 	var lastPage = this._lastChapterListPage(html);
 	for (var page = 2; page <= lastPage; page++) {
@@ -331,12 +421,12 @@ NovelBinSource.getBookChapters = async function(bookId) {
 	if (!chapters.length) {
 		var chaptersUrl = bookUrl.replace(/\/+$/, "") + "/chapters";
 		try {
-			html = await this._fetchHtml(chaptersUrl, bookUrl);
+			html = await this._fetchHtml(chaptersUrl, bookUrl, "chapters");
 			chapters = this._parseChapterLinks(html, bookUrl);
 			lastPage = this._lastChapterListPage(html);
 			for (var chapterPage = 2; chapterPage <= lastPage; chapterPage++) {
 				var chapterPageUrl = chaptersUrl + "?page=" + chapterPage;
-				this._mergeChapters(chapters, this._parseChapterLinks(await this._fetchHtml(chapterPageUrl, bookUrl), bookUrl));
+				this._mergeChapters(chapters, this._parseChapterLinks(await this._fetchHtml(chapterPageUrl, bookUrl, "chapters"), bookUrl));
 			}
 		} catch (_) {}
 	}
@@ -387,8 +477,9 @@ NovelBinSource._sanitizeChapterHtml = function(html, pageUrl) {
 };
 
 NovelBinSource.getBookChapter = async function(chapterId) {
+	await this._getBaseUrl();
 	var chapterUrl = this._chapterUrl(chapterId);
-	var html = await this._fetchHtml(chapterUrl, this.BASE_URL + "/");
+	var html = await this._fetchHtml(chapterUrl, this._baseUrl() + "/", "chapter");
 	var content = this._extractContentHtml(html);
 	if (!content) {
 		throw new Error("Could not locate NovelBin chapter content.");

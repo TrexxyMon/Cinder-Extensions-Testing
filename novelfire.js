@@ -2,7 +2,7 @@ var NovelFireSource = {};
 
 NovelFireSource.id = "novelfire";
 NovelFireSource.name = "Novel Fire";
-NovelFireSource.version = "0.1.0-cinder";
+NovelFireSource.version = "0.1.1-cinder";
 NovelFireSource.icon = "NF";
 NovelFireSource.description = "Search and build public chaptered web novels from Novel Fire into EPUB on device. No debrid required.";
 NovelFireSource.contentType = "books";
@@ -26,6 +26,38 @@ NovelFireSource._headers = function(referer) {
 		"Accept-Language": "en-US,en;q=0.9",
 		"Referer": referer || this.BASE_URL + "/",
 	};
+};
+
+NovelFireSource._browserHeaders = function(referer, expectedKind) {
+	var headers = this._headers(referer);
+	headers["X-Cinder-Suppress-Interactive"] = "1";
+	headers["X-Cinder-Visible-Layout"] = "1";
+	headers["X-Cinder-Wake-Page"] = "1";
+	headers["X-Cinder-Min-Wait-Ms"] = "4500";
+	headers["X-Cinder-Max-Wait-Ms"] = "18000";
+	if (expectedKind === "search") headers["X-Cinder-Wait-For-Selector"] = ".novel-item, a[href*='/book/']";
+	if (expectedKind === "chapters") headers["X-Cinder-Wait-For-Selector"] = "a[href*='/chapter-'], a[href*='/book/']";
+	if (expectedKind === "chapter") headers["X-Cinder-Wait-For-Selector"] = "#content, #chapter-container, #chapter-article";
+	return headers;
+};
+
+NovelFireSource._looksBlockedHtml = function(html) {
+	var text = String(html || "").toLowerCase();
+	return text.indexOf("cf-chl") >= 0 ||
+		text.indexOf("just a moment") >= 0 ||
+		text.indexOf("checking your browser") >= 0 ||
+		text.indexOf("verify you are human") >= 0 ||
+		text.indexOf("security challenge") >= 0 ||
+		text.indexOf("ddos-guard") >= 0 ||
+		text.indexOf("captcha") >= 0;
+};
+
+NovelFireSource._hasExpectedHtml = function(html, expectedKind) {
+	if (!expectedKind) return String(html || "").length > 100;
+	if (expectedKind === "search") return this._parseSearchResults(html).length > 0 || /href=["'][^"']*\/book\/[^"']+/i.test(String(html || ""));
+	if (expectedKind === "chapters") return this._parseChapterLinks(html, this.BASE_URL + "/book/placeholder").length > 0 || this._chapterCountFromHtml(html) > 0 || /href=["'][^"']*\/chapter-/i.test(String(html || ""));
+	if (expectedKind === "chapter") return !!this._extractContentHtml(html);
+	return String(html || "").length > 100;
 };
 
 NovelFireSource._sleep = function(ms) {
@@ -79,29 +111,31 @@ NovelFireSource._absoluteUrl = function(url, baseUrl) {
 	return this.BASE_URL + "/" + value.replace(/^\/+/, "");
 };
 
-NovelFireSource._fetchHtml = async function(url, referer) {
+NovelFireSource._fetchHtml = async function(url, referer, expectedKind) {
 	var response = null;
 	var lastStatus = 0;
 	for (var attempt = 1; attempt <= 3; attempt++) {
 		try {
 			response = await cinder.fetch(url, {
 				headers: this._headers(referer),
-				timeout: 30000,
+				timeout: 10000,
 			});
 			lastStatus = response && response.status ? Number(response.status) : 0;
-			if (response && response.status >= 200 && response.status < 300 && response.data != null) {
-				return String(response.data || "");
+			var directHtml = response && response.data != null ? String(response.data || "") : "";
+			if (response && response.status >= 200 && response.status < 300 && directHtml && !this._looksBlockedHtml(directHtml) && this._hasExpectedHtml(directHtml, expectedKind)) {
+				return directHtml;
 			}
 		} catch (_) {}
 
 		if (cinder.fetchBrowser) {
 			response = await cinder.fetchBrowser(url, {
-				headers: this._headers(referer),
-				timeout: 35000,
+				headers: this._browserHeaders(referer, expectedKind),
+				timeout: 24000,
 			});
 			lastStatus = response && response.status ? Number(response.status) : lastStatus;
-			if (response && response.status >= 200 && response.status < 300 && response.data != null) {
-				return String(response.data || "");
+			var browserHtml = response && response.data != null ? String(response.data || "") : "";
+			if (response && response.status >= 200 && response.status < 300 && browserHtml && !this._looksBlockedHtml(browserHtml) && this._hasExpectedHtml(browserHtml, expectedKind)) {
+				return browserHtml;
 			}
 		}
 
@@ -205,7 +239,7 @@ NovelFireSource._parseSearchResults = function(html) {
 
 NovelFireSource.search = async function(query, page) {
 	if (!query || !String(query).trim()) return [];
-	var html = await this._fetchHtml(this._searchUrl(String(query).trim(), page || 0), this.BASE_URL + "/");
+	var html = await this._fetchHtml(this._searchUrl(String(query).trim(), page || 0), this.BASE_URL + "/", "search");
 	return this._parseSearchResults(html).slice(0, 40);
 };
 
@@ -328,7 +362,7 @@ NovelFireSource._mergeChapters = function(target, additions) {
 NovelFireSource.getBookChapters = async function(bookId) {
 	var bookUrl = this._bookUrl(bookId);
 	var chaptersUrl = bookUrl.replace(/\/+$/, "") + "/chapters";
-	var html = await this._fetchHtml(chaptersUrl, bookUrl);
+	var html = await this._fetchHtml(chaptersUrl, bookUrl, "chapters");
 	var chapters = this._parseChapterLinks(html, bookUrl);
 	var totalCount = this._chapterCountFromHtml(html);
 	if (totalCount > chapters.length) {
@@ -337,10 +371,10 @@ NovelFireSource.getBookChapters = async function(bookId) {
 	var lastPage = this._lastChapterListPage(html);
 	for (var page = 2; page <= lastPage; page++) {
 		var pageUrl = chaptersUrl + "?page=" + page;
-		this._mergeChapters(chapters, this._parseChapterLinks(await this._fetchHtml(pageUrl, bookUrl), bookUrl));
+		this._mergeChapters(chapters, this._parseChapterLinks(await this._fetchHtml(pageUrl, bookUrl, "chapters"), bookUrl));
 	}
 	if (!chapters.length) {
-		chapters = this._parseChapterLinks(await this._fetchHtml(bookUrl, this.BASE_URL + "/"), bookUrl);
+		chapters = this._parseChapterLinks(await this._fetchHtml(bookUrl, this.BASE_URL + "/", "chapters"), bookUrl);
 	}
 	if (!chapters.length) {
 		throw new Error("Novel Fire did not expose any chapter links for this novel.");
@@ -390,7 +424,7 @@ NovelFireSource._sanitizeChapterHtml = function(html, pageUrl) {
 
 NovelFireSource.getBookChapter = async function(chapterId) {
 	var chapterUrl = this._chapterUrl(chapterId);
-	var html = await this._fetchHtml(chapterUrl, this.BASE_URL + "/");
+	var html = await this._fetchHtml(chapterUrl, this.BASE_URL + "/", "chapter");
 	var content = this._extractContentHtml(html);
 	if (!content) {
 		throw new Error("Could not locate Novel Fire chapter content.");
