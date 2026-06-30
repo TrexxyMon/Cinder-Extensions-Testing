@@ -17,7 +17,6 @@ https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/repo.
 - **Z-Library (Direct)**: Scrapes Z-Library mirrors with IP rotation and Cloudflare bypass.
 - **FreeMagazines.top**: Searches and browses PDF magazines with on-device link resolution, no external proxy.
 - **JNovels**: Searches JNovels light novel EPUB/PDF posts with on-device link resolution.
-- **NovelBin**: Searches public chaptered web novels from NovelBin and builds EPUBs on device. No debrid required.
 - **Novel Fire**: Searches public chaptered web novels from Novel Fire and builds EPUBs on device. No debrid required.
 
 ## Disclaimer

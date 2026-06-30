@@ -2,7 +2,7 @@ var NovelFireSource = {};
 
 NovelFireSource.id = "novelfire";
 NovelFireSource.name = "Novel Fire";
-NovelFireSource.version = "0.1.6-cinder";
+NovelFireSource.version = "0.1.7-cinder";
 NovelFireSource.icon = "NF";
 NovelFireSource.description = "Search and build public chaptered web novels from Novel Fire into EPUB on device. No debrid required.";
 NovelFireSource.contentType = "books";
@@ -19,7 +19,7 @@ NovelFireSource.capabilities = {
 
 NovelFireSource.BASE_URL = "https://novelfire.net";
 NovelFireSource.DEFAULT_MAX_BUILD_CHAPTERS = 800;
-NovelFireSource.CHAPTER_REQUEST_DELAY_MS = 650;
+NovelFireSource.CHAPTER_REQUEST_DELAY_MS = 500;
 NovelFireSource._chapterFetchQueue = Promise.resolve();
 NovelFireSource._lastChapterFetchAt = 0;
 
