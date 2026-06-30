@@ -73,7 +73,7 @@
                            "version":  "0.1.5-cinder",
                            "description":  "Search and build public chaptered web novels from NovelBin into EPUB on device. No debrid required.",
                            "contentType":  "books",
-                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/27a7992e40fdf9a0570fdbf3776ea9c1c23ea6d3/novelbin.js",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/27a79920410a52d7e20736bdfaef7cf03b1e7b22/novelbin.js",
                            "minCinderVersion":  "2.0.0",
                            "contentTypes":  [
                                                 "webnovel",
@@ -93,7 +93,7 @@
                            "version":  "0.1.5-cinder",
                            "description":  "Search and build public chaptered web novels from Novel Fire into EPUB on device. No debrid required.",
                            "contentType":  "books",
-                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/27a7992e40fdf9a0570fdbf3776ea9c1c23ea6d3/novelfire.js",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/27a79920410a52d7e20736bdfaef7cf03b1e7b22/novelfire.js",
                            "minCinderVersion":  "2.0.0",
                            "contentTypes":  [
                                                 "webnovel",
