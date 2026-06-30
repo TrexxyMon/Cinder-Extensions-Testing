@@ -2,7 +2,7 @@ var NovelFireSource = {};
 
 NovelFireSource.id = "novelfire";
 NovelFireSource.name = "Novel Fire";
-NovelFireSource.version = "0.1.7-cinder";
+NovelFireSource.version = "0.1.8-cinder";
 NovelFireSource.icon = "NF";
 NovelFireSource.description = "Search and build public chaptered web novels from Novel Fire into EPUB on device. No debrid required.";
 NovelFireSource.contentType = "books";
@@ -19,9 +19,15 @@ NovelFireSource.capabilities = {
 
 NovelFireSource.BASE_URL = "https://novelfire.net";
 NovelFireSource.DEFAULT_MAX_BUILD_CHAPTERS = 800;
-NovelFireSource.CHAPTER_REQUEST_DELAY_MS = 500;
+NovelFireSource.CHAPTER_REQUEST_DELAY_MS = 450;
+NovelFireSource.CHAPTER_RATE_LIMIT_DELAY_MS = 900;
+NovelFireSource.CHAPTER_RATE_LIMIT_COOLDOWN_MS = 9000;
+NovelFireSource.CHAPTER_MAX_RATE_LIMIT_RETRIES = 2;
 NovelFireSource._chapterFetchQueue = Promise.resolve();
 NovelFireSource._lastChapterFetchAt = 0;
+NovelFireSource._chapterAdaptiveDelayMs = 0;
+NovelFireSource._chapterRateLimitCooldownUntil = 0;
+NovelFireSource._chapterSuccessSinceLimit = 0;
 
 NovelFireSource.getSettings = function() {
 	return [
@@ -95,15 +101,43 @@ NovelFireSource._sleep = function(ms) {
 	});
 };
 
+NovelFireSource._isRateLimitError = function(error) {
+	return /HTTP\s+429/i.test(String(error && error.message ? error.message : error || ""));
+};
+
+NovelFireSource._currentChapterDelay = function() {
+	return Math.max(this.CHAPTER_REQUEST_DELAY_MS, this._chapterAdaptiveDelayMs || 0);
+};
+
 NovelFireSource._runChapterFetchQueued = function(task) {
 	var self = this;
 	var previous = this._chapterFetchQueue || Promise.resolve();
 	var run = previous.catch(function() {}).then(async function() {
-		var now = Date.now();
-		var waitMs = Math.max(0, self.CHAPTER_REQUEST_DELAY_MS - (now - (self._lastChapterFetchAt || 0)));
-		if (waitMs > 0) await self._sleep(waitMs);
-		self._lastChapterFetchAt = Date.now();
-		return task();
+		for (var attempt = 0; attempt <= self.CHAPTER_MAX_RATE_LIMIT_RETRIES; attempt++) {
+			var now = Date.now();
+			var waitMs = Math.max(
+				0,
+				self._currentChapterDelay() - (now - (self._lastChapterFetchAt || 0)),
+				(self._chapterRateLimitCooldownUntil || 0) - now,
+			);
+			if (waitMs > 0) await self._sleep(waitMs);
+			self._lastChapterFetchAt = Date.now();
+			try {
+				var result = await task();
+				self._chapterSuccessSinceLimit = (self._chapterSuccessSinceLimit || 0) + 1;
+				if ((self._chapterAdaptiveDelayMs || 0) > self.CHAPTER_REQUEST_DELAY_MS && self._chapterSuccessSinceLimit >= 20) {
+					self._chapterAdaptiveDelayMs = Math.max(self.CHAPTER_REQUEST_DELAY_MS, (self._chapterAdaptiveDelayMs || 0) - 75);
+					if (self._chapterAdaptiveDelayMs <= self.CHAPTER_REQUEST_DELAY_MS) self._chapterAdaptiveDelayMs = 0;
+					self._chapterSuccessSinceLimit = 0;
+				}
+				return result;
+			} catch (error) {
+				if (!self._isRateLimitError(error) || attempt >= self.CHAPTER_MAX_RATE_LIMIT_RETRIES) throw error;
+				self._chapterSuccessSinceLimit = 0;
+				self._chapterAdaptiveDelayMs = Math.max(self._chapterAdaptiveDelayMs || 0, self.CHAPTER_RATE_LIMIT_DELAY_MS);
+				self._chapterRateLimitCooldownUntil = Date.now() + self.CHAPTER_RATE_LIMIT_COOLDOWN_MS * (attempt + 1);
+			}
+		}
 	});
 	this._chapterFetchQueue = run.then(function() {}, function() {});
 	return run;
@@ -200,6 +234,10 @@ NovelFireSource._fetchHtmlNow = async function(url, referer, expectedKind) {
 				return directHtml;
 			}
 		} catch (_) {}
+
+		if (expectedKind === "chapter" && lastStatus === 429) {
+			break;
+		}
 
 		if (cinder.fetchBrowser) {
 			response = await cinder.fetchBrowser(url, {
