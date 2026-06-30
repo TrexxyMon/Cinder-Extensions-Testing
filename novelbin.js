@@ -2,7 +2,7 @@ var NovelBinSource = {};
 
 NovelBinSource.id = "novelbin";
 NovelBinSource.name = "NovelBin";
-NovelBinSource.version = "0.1.1-cinder";
+NovelBinSource.version = "0.1.2-cinder";
 NovelBinSource.icon = "NB";
 NovelBinSource.description = "Search and build public chaptered web novels from NovelBin into EPUB on device. No debrid required.";
 NovelBinSource.contentType = "books";
@@ -17,7 +17,7 @@ NovelBinSource.capabilities = {
 	manga: false,
 };
 
-NovelBinSource.BASE_URL = "https://novelbin.com";
+NovelBinSource.BASE_URL = "https://www.novelbin.cc";
 
 NovelBinSource.getSettings = function() {
 	return [
@@ -25,8 +25,8 @@ NovelBinSource.getSettings = function() {
 			id: "base_url",
 			label: "Base URL",
 			type: "text",
-			defaultValue: "https://novelbin.com",
-			placeholder: "https://novelbin.com",
+			defaultValue: "https://www.novelbin.cc",
+			placeholder: "https://www.novelbin.cc",
 		},
 	];
 };
@@ -71,7 +71,7 @@ NovelBinSource._browserHeaders = function(referer, expectedKind) {
 	headers["X-Cinder-Wake-Page"] = "1";
 	headers["X-Cinder-Min-Wait-Ms"] = "4500";
 	headers["X-Cinder-Max-Wait-Ms"] = "18000";
-	if (expectedKind === "search") headers["X-Cinder-Wait-For-Selector"] = "a[href*='/b/'], a[href*='/novel-book/']";
+	if (expectedKind === "search") headers["X-Cinder-Wait-For-Selector"] = "a[href*='/book/'], a[href*='/b/'], a[href*='/novel-book/']";
 	if (expectedKind === "chapters") headers["X-Cinder-Wait-For-Selector"] = "a[href*='chapter']";
 	if (expectedKind === "chapter") headers["X-Cinder-Wait-For-Selector"] = "#chr-content, #chapter-content, .chapter-content";
 	return headers;
@@ -92,8 +92,8 @@ NovelBinSource._looksBlockedHtml = function(html) {
 
 NovelBinSource._hasExpectedHtml = function(html, expectedKind) {
 	if (!expectedKind) return String(html || "").length > 100;
-	if (expectedKind === "search") return this._parseSearchResults(html).length > 0 || /href=["'][^"']*\/(?:b|novel-book)\/[^"']+/i.test(String(html || ""));
-	if (expectedKind === "chapters") return this._parseChapterLinks(html, this._baseUrl() + "/b/placeholder").length > 0 || /href=["'][^"']*chapter/i.test(String(html || ""));
+	if (expectedKind === "search") return this._parseSearchResults(html).length > 0 || /href=["'][^"']*\/(?:book|b|novel-book)\/[^"']+/i.test(String(html || ""));
+	if (expectedKind === "chapters") return this._parseChapterLinks(html, this._baseUrl() + "/book/placeholder").length > 0 || /href=["'][^"']*chapter/i.test(String(html || ""));
 	if (expectedKind === "chapter") return !!this._extractContentHtml(html);
 	return String(html || "").length > 100;
 };
@@ -212,12 +212,12 @@ NovelBinSource._searchUrl = function(query, page) {
 NovelBinSource._bookPath = function(value) {
 	var raw = String(value || "").trim();
 	if (!raw) return "";
-	var match = raw.match(/https?:\/\/[^\/]+(\/(?:b|novel-book)\/[^?#]+)/i);
+	var match = raw.match(/https?:\/\/[^\/]+(\/(?:book|b|novel-book)\/[^?#]+)/i);
 	if (match) return match[1].replace(/\/+$/, "");
-	match = raw.match(/(\/(?:b|novel-book)\/[^?#]+)/i);
+	match = raw.match(/(\/(?:book|b|novel-book)\/[^?#]+)/i);
 	if (match) return match[1].replace(/\/+$/, "");
-	if (/^(?:b|novel-book)\//i.test(raw)) return "/" + raw.replace(/\/+$/, "");
-	if (/^[a-z0-9][a-z0-9-]+$/i.test(raw)) return "/b/" + raw;
+	if (/^(?:book|b|novel-book)\//i.test(raw)) return "/" + raw.replace(/\/+$/, "");
+	if (/^[a-z0-9][a-z0-9-]+$/i.test(raw)) return "/book/" + raw;
 	return "";
 };
 
@@ -288,7 +288,7 @@ NovelBinSource._parseSearchResults = function(html) {
 
 	var results = [];
 	var seen = {};
-	var anchorRe = /<a\b([^>]*)href=["']([^"']*\/(?:b|novel-book)\/[^"'#?]+)["']([^>]*)>([\s\S]*?)<\/a>/gi;
+	var anchorRe = /<a\b([^>]*)href=["']([^"']*\/(?:book|b|novel-book)\/[^"'#?]+)["']([^>]*)>([\s\S]*?)<\/a>/gi;
 	var match;
 	while ((match = anchorRe.exec(body)) !== null) {
 		var href = match[2] || "";
@@ -346,7 +346,7 @@ NovelBinSource._parseChapterLinks = function(html, bookUrl) {
 	var seen = {};
 	var bookPath = this._bookPath(bookUrl);
 	var slug = this._slugFromBookPath(bookPath);
-	var anchorRe = /<a\b([^>]*)href=["']([^"']*\/(?:b|novel-book)\/[^"']*chapter[^"']*)["']([^>]*)>([\s\S]*?)<\/a>/gi;
+	var anchorRe = /<a\b([^>]*)href=["']([^"']*\/(?:book|b|novel-book)\/[^"']*chapter[^"']*)["']([^>]*)>([\s\S]*?)<\/a>/gi;
 	var match;
 	while ((match = anchorRe.exec(String(html || ""))) !== null) {
 		var href = match[2] || "";

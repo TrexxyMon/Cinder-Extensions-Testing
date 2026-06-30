@@ -2,7 +2,7 @@ var NovelFireSource = {};
 
 NovelFireSource.id = "novelfire";
 NovelFireSource.name = "Novel Fire";
-NovelFireSource.version = "0.1.1-cinder";
+NovelFireSource.version = "0.1.2-cinder";
 NovelFireSource.icon = "NF";
 NovelFireSource.description = "Search and build public chaptered web novels from Novel Fire into EPUB on device. No debrid required.";
 NovelFireSource.contentType = "books";
@@ -18,6 +18,31 @@ NovelFireSource.capabilities = {
 };
 
 NovelFireSource.BASE_URL = "https://novelfire.net";
+NovelFireSource.DEFAULT_MAX_BUILD_CHAPTERS = 800;
+
+NovelFireSource.getSettings = function() {
+	return [
+		{
+			id: "max_build_chapters",
+			label: "Max EPUB Chapters",
+			type: "text",
+			defaultValue: String(this.DEFAULT_MAX_BUILD_CHAPTERS),
+			placeholder: String(this.DEFAULT_MAX_BUILD_CHAPTERS),
+		},
+	];
+};
+
+NovelFireSource._getMaxBuildChapters = async function() {
+	var raw = "";
+	try {
+		if (typeof cinder !== "undefined" && cinder.store && cinder.store.get) {
+			raw = await cinder.store.get("max_build_chapters");
+		}
+	} catch (_) {}
+	var parsed = parseInt(String(raw || this.DEFAULT_MAX_BUILD_CHAPTERS).replace(/[^\d]/g, ""), 10);
+	if (isNaN(parsed) || parsed <= 0) return this.DEFAULT_MAX_BUILD_CHAPTERS;
+	return Math.max(25, Math.min(parsed, 2000));
+};
 
 NovelFireSource._headers = function(referer) {
 	return {
@@ -306,28 +331,6 @@ NovelFireSource._parseChapterLinks = function(html, bookUrl) {
 	return chapters;
 };
 
-NovelFireSource._expandNumericChapterList = function(bookUrl, knownChapters, totalCount) {
-	if (!totalCount || totalCount <= knownChapters.length) return knownChapters;
-	var knownByNumber = {};
-	for (var i = 0; i < knownChapters.length; i++) {
-		var number = this._chapterNumber(knownChapters[i].url || knownChapters[i].id, knownChapters[i].title, 0);
-		if (number > 0) knownByNumber[String(number)] = knownChapters[i];
-	}
-	var chapters = [];
-	for (var n = 1; n <= totalCount; n++) {
-		var known = knownByNumber[String(n)];
-		var url = bookUrl.replace(/\/+$/, "") + "/chapter-" + n;
-		chapters.push({
-			id: known && known.id ? known.id : url,
-			title: known && known.title ? known.title : "Chapter " + n,
-			index: n,
-			url: known && known.url ? known.url : url,
-			datePublished: known && known.datePublished ? known.datePublished : undefined,
-		});
-	}
-	return chapters;
-};
-
 NovelFireSource._lastChapterListPage = function(html) {
 	var maxPage = 1;
 	var regex = /[?&]page=(\d+)/gi;
@@ -362,22 +365,29 @@ NovelFireSource._mergeChapters = function(target, additions) {
 NovelFireSource.getBookChapters = async function(bookId) {
 	var bookUrl = this._bookUrl(bookId);
 	var chaptersUrl = bookUrl.replace(/\/+$/, "") + "/chapters";
+	var maxBuildChapters = await this._getMaxBuildChapters();
 	var html = await this._fetchHtml(chaptersUrl, bookUrl, "chapters");
 	var chapters = this._parseChapterLinks(html, bookUrl);
 	var totalCount = this._chapterCountFromHtml(html);
-	if (totalCount > chapters.length) {
-		return this._expandNumericChapterList(bookUrl, chapters, totalCount);
+	if (totalCount > maxBuildChapters) {
+		throw new Error("Novel Fire lists " + totalCount + " chapters for this novel. Cinder's current EPUB builder is limited to " + maxBuildChapters + " chapters to avoid timeouts. Lower-volume novels should build normally; raise Max EPUB Chapters in extension settings only if you want to try a larger build.");
 	}
 	var lastPage = this._lastChapterListPage(html);
 	for (var page = 2; page <= lastPage; page++) {
 		var pageUrl = chaptersUrl + "?page=" + page;
 		this._mergeChapters(chapters, this._parseChapterLinks(await this._fetchHtml(pageUrl, bookUrl, "chapters"), bookUrl));
+		if (chapters.length > maxBuildChapters) {
+			throw new Error("Novel Fire returned more than " + maxBuildChapters + " chapters for this novel. Raise Max EPUB Chapters in extension settings only if you want to try a larger build.");
+		}
 	}
 	if (!chapters.length) {
 		chapters = this._parseChapterLinks(await this._fetchHtml(bookUrl, this.BASE_URL + "/", "chapters"), bookUrl);
 	}
 	if (!chapters.length) {
 		throw new Error("Novel Fire did not expose any chapter links for this novel.");
+	}
+	if (chapters.length > maxBuildChapters) {
+		throw new Error("Novel Fire returned more than " + maxBuildChapters + " chapters for this novel. Raise Max EPUB Chapters in extension settings only if you want to try a larger build.");
 	}
 	return chapters;
 };
