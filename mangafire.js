@@ -2,7 +2,7 @@ var MangaFire = {};
 
 MangaFire.id = "mangafire";
 MangaFire.name = "MangaFire";
-MangaFire.version = "0.1.1-cinder";
+MangaFire.version = "0.1.2-cinder";
 MangaFire.icon = "MF";
 MangaFire.description = "Read manga, manhwa, and manhua from MangaFire. No debrid required.";
 MangaFire.contentType = "manga";
@@ -90,6 +90,13 @@ MangaFire._pathFromUrl = function(value) {
   } catch (e) {
     return raw.replace(this.BASE_URL, "").split(/[?#]/)[0].replace(/\/+$/, "");
   }
+};
+
+MangaFire._mangaSlug = function(value) {
+  var path = this._pathFromUrl(value);
+  var parts = path.split("/").filter(Boolean);
+  var slug = parts.length ? parts[parts.length - 1] : "";
+  return slug.split(".").pop() || "";
 };
 
 MangaFire._isBlockedHtml = function(res) {
@@ -192,6 +199,19 @@ MangaFire._numberFromText = function(value) {
     String(value || "").match(/\bchap(?:ter)?\.?\s*([0-9]+(?:\.[0-9]+)?)/i) ||
     String(value || "").match(/\b([0-9]+(?:\.[0-9]+)?)\b/);
   return match ? parseFloat(match[1]) : 0;
+};
+
+MangaFire._parseJson = function(value) {
+  if (!value) return null;
+  var text = String(value).replace(/^\uFEFF/, "").trim();
+  var pre = text.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
+  if (pre) text = this._decode(pre[1]).trim();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    return null;
+  }
 };
 
 MangaFire._parseCards = function(html) {
@@ -391,10 +411,7 @@ MangaFire.getMangaDetails = async function(id) {
   };
 };
 
-MangaFire.getChapters = async function(mangaId) {
-  var path = this._pathFromUrl(mangaId);
-  var url = this._absUrl(path);
-  var html = await this._fetchText(url);
+MangaFire._parseChaptersFromHtml = function(html) {
   var chapters = [];
   var seen = {};
   var chapterScope = (html.match(/<div[^>]+class=["'][^"']*\btab-content\b[^"']*["'][^>]*data-name=["']chapter["'][\s\S]*?(?=<div[^>]+class=["'][^"']*\btab-content\b|<\/main>|<\/body>|$)/i) || [])[0] || html;
@@ -447,7 +464,6 @@ MangaFire.getChapters = async function(mangaId) {
     }
   }
 
-  if (chapters.length === 0) throw new Error("MangaFire returned no chapters.");
   return chapters.sort(function(a, b) {
     var aNum = Number.isFinite(a.chapterNumber) && a.chapterNumber > 0 ? a.chapterNumber : Number.POSITIVE_INFINITY;
     var bNum = Number.isFinite(b.chapterNumber) && b.chapterNumber > 0 ? b.chapterNumber : Number.POSITIVE_INFINITY;
@@ -457,6 +473,58 @@ MangaFire.getChapters = async function(mangaId) {
     delete chapter._sourceIndex;
     return chapter;
   });
+};
+
+MangaFire._fetchChapterFragment = async function(mangaPath, mangaUrl) {
+  var slug = this._mangaSlug(mangaPath);
+  if (!slug) return "";
+  var apiUrl = this.BASE_URL + "/ajax/manga/" + encodeURIComponent(slug) + "/chapter/en";
+  var res = await cinder.fetch(apiUrl, {
+    headers: this._headers({
+      "Accept": "application/json, text/plain, */*",
+      "Referer": mangaUrl,
+      "X-Requested-With": "XMLHttpRequest",
+    }),
+    timeout: 18000,
+  });
+  if (this._isBlockedHtml(res) && cinder && typeof cinder.fetchBrowser === "function") {
+    res = await cinder.fetchBrowser(apiUrl, {
+      headers: {
+        "Accept": "application/json, text/plain, */*",
+        "Referer": mangaUrl,
+        "X-Requested-With": "XMLHttpRequest",
+        "X-Cinder-Suppress-Interactive": "1",
+        "X-Cinder-Min-Wait-Ms": "900",
+        "X-Cinder-Max-Wait-Ms": "9000",
+      },
+      timeout: 18000,
+    });
+  }
+  if (!res || res.status < 200 || res.status >= 300 || !res.data) return "";
+  var parsed = this._parseJson(res.data);
+  if (!parsed) return "";
+  if (typeof parsed.result === "string") return parsed.result;
+  if (parsed.result && typeof parsed.result.html === "string") return parsed.result.html;
+  return "";
+};
+
+MangaFire.getChapters = async function(mangaId) {
+  var path = this._pathFromUrl(mangaId);
+  var url = this._absUrl(path);
+  var chapters = [];
+
+  try {
+    var fragment = await this._fetchChapterFragment(path, url);
+    if (fragment) chapters = this._parseChaptersFromHtml(fragment);
+  } catch (e) {}
+
+  if (chapters.length === 0) {
+    var html = await this._fetchText(url);
+    chapters = this._parseChaptersFromHtml(html);
+  }
+
+  if (chapters.length === 0) throw new Error("MangaFire returned no chapters.");
+  return chapters;
 };
 
 MangaFire._extractPagesFromHtml = function(html, referer) {
@@ -481,23 +549,105 @@ MangaFire._extractPagesFromHtml = function(html, referer) {
   return pages;
 };
 
+MangaFire._extractPagesFromReadPayload = function(value, referer) {
+  var parsed = this._parseJson(value);
+  if (parsed && typeof parsed.body === "string") {
+    parsed = this._parseJson(parsed.body);
+  }
+  if (!parsed) return [];
+
+  var result = parsed.result || parsed.data || parsed;
+  var images = result && result.images ? result.images : [];
+  if (typeof images === "string") {
+    images = this._parseJson(images) || [];
+  }
+  if (!Array.isArray(images)) return [];
+
+  var pages = [];
+  var seen = {};
+  for (var i = 0; i < images.length; i++) {
+    var item = images[i];
+    var src = "";
+    var offset = 0;
+    if (Array.isArray(item)) {
+      src = item[0];
+      offset = parseInt(item[2], 10) || 0;
+    } else if (item && typeof item === "object") {
+      src = item.url || item.src || item.image || item.link || "";
+      offset = parseInt(item.offset || item.scramble || item.scrambled || item.s, 10) || 0;
+    }
+    src = this._absUrl(src);
+    if (!src || seen[src]) continue;
+    seen[src] = true;
+    pages.push({
+      url: src,
+      headers: this._imageHeaders(referer),
+      extra: offset > 0 ? { mangafireScrambleOffset: offset } : undefined,
+    });
+  }
+  return pages;
+};
+
+MangaFire._fetchReadApiPages = async function(chapterUrl) {
+  if (!cinder || typeof cinder.fetchBrowserCaptured !== "function") return [];
+  var captured = await cinder.fetchBrowserCaptured(chapterUrl, {
+    headers: {
+      "Referer": this.BASE_URL + "/",
+      "X-Cinder-Capture-Url-Includes": "ajax/read/",
+      "X-Cinder-Suppress-Interactive": "1",
+      "X-Cinder-Wake-Page": "1",
+      "X-Cinder-Min-Wait-Ms": "1200",
+      "X-Cinder-Max-Wait-Ms": "22000",
+    },
+    timeout: 30000,
+  });
+  if (!captured || captured.status < 200 || captured.status >= 300 || !captured.data) return [];
+
+  var pages = this._extractPagesFromReadPayload(captured.data, chapterUrl);
+  if (pages.length > 0) return pages;
+
+  var wrapper = this._parseJson(captured.data);
+  var capturedUrl = wrapper && wrapper.url ? String(wrapper.url) : "";
+  if (!capturedUrl) return [];
+
+  var res = await cinder.fetch(capturedUrl, {
+    headers: this._headers({
+      "Accept": "application/json, text/plain, */*",
+      "Referer": chapterUrl,
+      "X-Requested-With": "XMLHttpRequest",
+    }),
+    timeout: 18000,
+  });
+  if (!res || res.status < 200 || res.status >= 300 || !res.data) return [];
+  return this._extractPagesFromReadPayload(res.data, chapterUrl);
+};
+
 MangaFire.getPages = async function(chapterId) {
   var path = this._pathFromUrl(chapterId);
   var chapterUrl = this._absUrl(path);
+  var pages = [];
+
+  try {
+    pages = await this._fetchReadApiPages(chapterUrl);
+  } catch (e) {
+    pages = [];
+  }
+  if (pages.length > 0) return pages;
+
   var html = "";
   try {
     html = await this._fetchText(chapterUrl, this.BASE_URL + "/");
   } catch (e) {
     html = "";
   }
-  var pages = html ? this._extractPagesFromHtml(html, chapterUrl) : [];
+  pages = html ? this._extractPagesFromHtml(html, chapterUrl) : [];
 
   if (pages.length === 0) {
     var rendered = await this._fetchRenderedHtml(chapterUrl, this.BASE_URL + "/");
     pages = this._extractPagesFromHtml(rendered, chapterUrl);
   }
 
-  if (pages.length === 0) throw new Error("MangaFire returned no pages for this chapter.");
+  if (pages.length === 0) throw new Error("MangaFire returned no pages for this chapter. The read API capture did not expose image URLs on this device.");
   return pages;
 };
 
