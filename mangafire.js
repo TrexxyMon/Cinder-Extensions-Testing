@@ -2,7 +2,7 @@ var MangaFire = {};
 
 MangaFire.id = "mangafire";
 MangaFire.name = "MangaFire";
-MangaFire.version = "0.1.3-cinder";
+MangaFire.version = "0.1.4-cinder";
 MangaFire.icon = "MF";
 MangaFire.description = "Read manga, manhwa, and manhua from MangaFire. No debrid required.";
 MangaFire.contentType = "manga";
@@ -588,14 +588,14 @@ MangaFire._extractPagesFromReadPayload = function(value, referer) {
   return pages;
 };
 
-MangaFire._fetchReadApiPages = async function(chapterUrl) {
+MangaFire._fetchReadApiPagesWithNeedle = async function(chapterUrl, captureNeedle) {
   if (!cinder || typeof cinder.fetchBrowserCaptured !== "function") {
     throw new Error("MangaFire reader needs Cinder browser capture support in this app build.");
   }
   var captured = await cinder.fetchBrowserCaptured(chapterUrl, {
     headers: {
       "Referer": this.BASE_URL + "/",
-      "X-Cinder-Capture-Url-Includes": "ajax/read/",
+      "X-Cinder-Capture-Url-Includes": captureNeedle,
       "X-Cinder-Suppress-Interactive": "1",
       "X-Cinder-Visible-Layout": "1",
       "X-Cinder-Wake-Page": "1",
@@ -633,6 +633,20 @@ MangaFire._fetchReadApiPages = async function(chapterUrl) {
     throw new Error("MangaFire captured read API response did not contain image URLs.");
   }
   return pages;
+};
+
+MangaFire._fetchReadApiPages = async function(chapterUrl) {
+  var errors = [];
+  var needles = ["ajax/read/chapter", "ajax/read/volume"];
+  for (var i = 0; i < needles.length; i++) {
+    try {
+      var pages = await this._fetchReadApiPagesWithNeedle(chapterUrl, needles[i]);
+      if (pages.length > 0) return pages;
+    } catch (e) {
+      errors.push(e && e.message ? e.message : String(e || ""));
+    }
+  }
+  throw new Error(errors[0] || "MangaFire read API capture did not expose image URLs.");
 };
 
 MangaFire.getPages = async function(chapterId) {
