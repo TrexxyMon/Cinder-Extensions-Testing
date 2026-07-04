@@ -2,7 +2,7 @@ var MangaFire = {};
 
 MangaFire.id = "mangafire";
 MangaFire.name = "MangaFire";
-MangaFire.version = "0.1.2-cinder";
+MangaFire.version = "0.1.3-cinder";
 MangaFire.icon = "MF";
 MangaFire.description = "Read manga, manhwa, and manhua from MangaFire. No debrid required.";
 MangaFire.contentType = "manga";
@@ -589,26 +589,33 @@ MangaFire._extractPagesFromReadPayload = function(value, referer) {
 };
 
 MangaFire._fetchReadApiPages = async function(chapterUrl) {
-  if (!cinder || typeof cinder.fetchBrowserCaptured !== "function") return [];
+  if (!cinder || typeof cinder.fetchBrowserCaptured !== "function") {
+    throw new Error("MangaFire reader needs Cinder browser capture support in this app build.");
+  }
   var captured = await cinder.fetchBrowserCaptured(chapterUrl, {
     headers: {
       "Referer": this.BASE_URL + "/",
       "X-Cinder-Capture-Url-Includes": "ajax/read/",
       "X-Cinder-Suppress-Interactive": "1",
+      "X-Cinder-Visible-Layout": "1",
       "X-Cinder-Wake-Page": "1",
       "X-Cinder-Min-Wait-Ms": "1200",
-      "X-Cinder-Max-Wait-Ms": "22000",
+      "X-Cinder-Max-Wait-Ms": "32000",
     },
     timeout: 30000,
   });
-  if (!captured || captured.status < 200 || captured.status >= 300 || !captured.data) return [];
+  if (!captured || captured.status < 200 || captured.status >= 300 || !captured.data) {
+    throw new Error("MangaFire read API capture failed (HTTP " + (captured ? captured.status : 0) + ").");
+  }
 
   var pages = this._extractPagesFromReadPayload(captured.data, chapterUrl);
   if (pages.length > 0) return pages;
 
   var wrapper = this._parseJson(captured.data);
   var capturedUrl = wrapper && wrapper.url ? String(wrapper.url) : "";
-  if (!capturedUrl) return [];
+  if (!capturedUrl) {
+    throw new Error("MangaFire read API capture returned data but no captured URL.");
+  }
 
   var res = await cinder.fetch(capturedUrl, {
     headers: this._headers({
@@ -618,8 +625,14 @@ MangaFire._fetchReadApiPages = async function(chapterUrl) {
     }),
     timeout: 18000,
   });
-  if (!res || res.status < 200 || res.status >= 300 || !res.data) return [];
-  return this._extractPagesFromReadPayload(res.data, chapterUrl);
+  if (!res || res.status < 200 || res.status >= 300 || !res.data) {
+    throw new Error("MangaFire captured read API request failed (HTTP " + (res ? res.status : 0) + ").");
+  }
+  pages = this._extractPagesFromReadPayload(res.data, chapterUrl);
+  if (pages.length === 0) {
+    throw new Error("MangaFire captured read API response did not contain image URLs.");
+  }
+  return pages;
 };
 
 MangaFire.getPages = async function(chapterId) {
@@ -630,6 +643,10 @@ MangaFire.getPages = async function(chapterId) {
   try {
     pages = await this._fetchReadApiPages(chapterUrl);
   } catch (e) {
+    var captureError = e && e.message ? e.message : String(e || "");
+    if (/browser capture support|read API capture/i.test(captureError)) {
+      throw new Error(captureError);
+    }
     pages = [];
   }
   if (pages.length > 0) return pages;
