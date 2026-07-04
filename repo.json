@@ -1,5 +1,5 @@
 {
-    "version":  "2.1.67",
+    "version":  "2.1.68",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
@@ -137,6 +137,23 @@
                                             ],
                            "contentSubtypes":  [
                                                    "westernComic"
+                                               ]
+                       },
+                       {
+                           "id":  "mangafire",
+                           "name":  "MangaFire",
+                           "version":  "0.1.0-cinder",
+                           "description":  "Read manga, manhwa, and manhua from MangaFire. No debrid required.",
+                           "contentType":  "manga",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/mangafire.js",
+                           "minCinderVersion":  "2.0.0",
+                           "contentTypes":  [
+                                                "manga"
+                                            ],
+                           "contentSubtypes":  [
+                                                   "manga",
+                                                   "manhwa",
+                                                   "manhua"
                                                ]
                        }
                    ]
