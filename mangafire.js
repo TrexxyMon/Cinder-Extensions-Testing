@@ -2,7 +2,7 @@ var MangaFire = {};
 
 MangaFire.id = "mangafire";
 MangaFire.name = "MangaFire";
-MangaFire.version = "0.1.0-cinder";
+MangaFire.version = "0.1.1-cinder";
 MangaFire.icon = "MF";
 MangaFire.description = "Read manga, manhwa, and manhua from MangaFire. No debrid required.";
 MangaFire.contentType = "manga";
@@ -92,26 +92,33 @@ MangaFire._pathFromUrl = function(value) {
   }
 };
 
-MangaFire._fetchText = async function(url, referer) {
+MangaFire._isBlockedHtml = function(res) {
+  return !res ||
+    res.status === 0 ||
+    res.status === 403 ||
+    res.status === 429 ||
+    (res.data && /cf-challenge|turnstile|checking your browser|just a moment|Request is invalid/i.test(String(res.data)));
+};
+
+MangaFire._fetchText = async function(url, referer, browserOptions) {
   var res = await cinder.fetch(url, {
     headers: this._headers({ "Referer": referer || this.BASE_URL + "/" }),
     timeout: 30000,
   });
-  var blocked =
-    !res ||
-    res.status === 0 ||
-    res.status === 403 ||
-    res.status === 429 ||
-    (res.data && /cf-challenge|turnstile|checking your browser|just a moment/i.test(String(res.data)));
-  if (blocked && cinder && typeof cinder.fetchBrowser === "function") {
+  if (this._isBlockedHtml(res) && cinder && typeof cinder.fetchBrowser === "function") {
+    browserOptions = browserOptions || {};
+    var browserHeaders = {
+      "Referer": referer || this.BASE_URL + "/",
+      "X-Cinder-Suppress-Interactive": "1",
+      "X-Cinder-Wake-Page": "1",
+      "X-Cinder-Min-Wait-Ms": String(browserOptions.minWaitMs || 1500),
+      "X-Cinder-Max-Wait-Ms": String(browserOptions.maxWaitMs || 12000),
+    };
+    if (browserOptions.waitForSelector) {
+      browserHeaders["X-Cinder-Wait-For-Selector"] = browserOptions.waitForSelector;
+    }
     res = await cinder.fetchBrowser(url, {
-      headers: {
-        "Referer": referer || this.BASE_URL + "/",
-        "X-Cinder-Suppress-Interactive": "1",
-        "X-Cinder-Wake-Page": "1",
-        "X-Cinder-Min-Wait-Ms": "1500",
-        "X-Cinder-Max-Wait-Ms": "12000",
-      },
+      headers: browserHeaders,
       timeout: 30000,
     });
   }
@@ -190,7 +197,7 @@ MangaFire._numberFromText = function(value) {
 MangaFire._parseCards = function(html) {
   var results = [];
   var seen = {};
-  var cardRe = /<div[^>]+class=["'][^"']*\bunit\b[^"']*\bitem-[^"']*["'][\s\S]*?(?=<div[^>]+class=["'][^"']*\bunit\b[^"']*\bitem-|<nav[^>]+class=["'][^"']*\bnavigation\b|<\/section>|$)/gi;
+  var cardRe = /<div[^>]+class=["'][^"']*\bunit\b[^"']*["'][\s\S]*?(?=<div[^>]+class=["'][^"']*\bunit\b|<nav[^>]+class=["'][^"']*\bnavigation\b|<\/section>|$)/gi;
   var match;
   while ((match = cardRe.exec(html)) !== null) {
     var block = match[0];
@@ -227,6 +234,37 @@ MangaFire._parseCards = function(html) {
       },
     });
   }
+
+  var unitAnchorRe = /<a[^>]+class=["'][^"']*\bunit\b[^"']*["'][^>]+href=["']([^"']*\/manga\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  var unitMatch;
+  while ((unitMatch = unitAnchorRe.exec(html)) !== null) {
+    var anchorUrl = this._absUrl(unitMatch[1]);
+    var anchorPath = this._pathFromUrl(anchorUrl);
+    if (!anchorPath || seen[anchorPath]) continue;
+    var anchorBlock = unitMatch[2] || "";
+    var anchorImg = (anchorBlock.match(/<img[\s\S]*?>/i) || [])[0] || "";
+    var anchorCover = this._imageFromTag(anchorImg);
+    var anchorTitle =
+      this._stripTags((anchorBlock.match(/<h6[^>]*>([\s\S]*?)<\/h6>/i) || [])[1]) ||
+      this._decode(this._attr(anchorImg, "alt")) ||
+      this._titleFromPath(anchorPath);
+    var spanStatus = this._stripTags((anchorBlock.match(/<span[^>]*>([\s\S]*?)<\/span>/i) || [])[1]);
+    seen[anchorPath] = true;
+    results.push({
+      id: anchorPath,
+      title: anchorTitle,
+      cover: anchorCover || undefined,
+      coverHeaders: anchorCover ? this._imageHeaders(anchorUrl) : undefined,
+      url: anchorUrl,
+      format: "manga",
+      contentType: "manga",
+      contentTypes: ["manga"],
+      contentSubtypes: ["manga"],
+      extra: {
+        status: spanStatus || undefined,
+      },
+    });
+  }
   return results;
 };
 
@@ -254,9 +292,38 @@ MangaFire._extractMetaValue = function(html, label) {
 
 MangaFire.search = async function(query, page) {
   var pageNumber = (page || 0) + 1;
-  var url = this.BASE_URL + "/filter?keyword=" + encodeURIComponent(String(query || "").trim()) + "&page=" + pageNumber;
-  var html = await this._fetchText(url);
-  return this._parseCards(html);
+  var trimmed = String(query || "").trim();
+  var url = this.BASE_URL + "/filter?keyword=" + encodeURIComponent(trimmed) + "&language%5B%5D=en&page=" + pageNumber;
+  var html = await this._fetchText(url, this.BASE_URL + "/", {
+    waitForSelector: ".original.card-lg .unit, .unit.item, a.unit[href*='/manga/']",
+    minWaitMs: 2200,
+    maxWaitMs: 12000,
+  });
+  var results = this._parseCards(html);
+  if (results.length > 0 || !trimmed) return results;
+
+  // Last-resort fallback: MangaFire's quick-search endpoint sometimes works
+  // without a vrf token but can return default suggestions, so only keep
+  // obvious title matches.
+  try {
+    var ajax = await cinder.fetch(this.BASE_URL + "/ajax/manga/search?query=" + encodeURIComponent(trimmed), {
+      headers: this._headers({
+        "Accept": "application/json, text/plain, */*",
+        "X-Requested-With": "XMLHttpRequest",
+        "Referer": this.BASE_URL + "/",
+      }),
+      timeout: 8000,
+    });
+    if (ajax && ajax.status >= 200 && ajax.status < 300 && ajax.data) {
+      var parsed = JSON.parse(String(ajax.data));
+      var ajaxHtml = parsed && parsed.result && parsed.result.html ? String(parsed.result.html) : "";
+      var needle = trimmed.toLowerCase();
+      return this._parseCards(ajaxHtml).filter(function(item) {
+        return String(item.title || "").toLowerCase().indexOf(needle) !== -1;
+      });
+    }
+  } catch (e) {}
+  return [];
 };
 
 MangaFire.getDiscoverSections = async function() {
