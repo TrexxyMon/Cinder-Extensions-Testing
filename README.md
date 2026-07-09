@@ -13,6 +13,7 @@ https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/repo.
 [TrexxyMon/Cinder-Extensions-Testing](https://github.com/TrexxyMon/Cinder-Extensions-Testing)
 
 ## Available Extensions
+- **ComicK Fanmade**: Reads manga, manhwa, and manhua from ComicK Fanmade. No debrid required.
 - **ReadAllComics**: Reads western comics from ReadAllComics with chaptered image pages.
 - **Z-Library (Direct)**: Scrapes Z-Library mirrors with IP rotation and Cloudflare bypass.
 - **FreeMagazines.top**: Searches and browses PDF magazines with on-device link resolution, no external proxy.

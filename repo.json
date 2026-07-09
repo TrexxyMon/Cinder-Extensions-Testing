@@ -1,5 +1,5 @@
 {
-    "version":  "2.1.71",
+    "version":  "2.1.72",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
@@ -146,6 +146,23 @@
                            "description":  "Read manga, manhwa, and manhua from MangaFire. No debrid required.",
                            "contentType":  "manga",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/mangafire.js",
+                           "minCinderVersion":  "2.0.0",
+                           "contentTypes":  [
+                                                "manga"
+                                            ],
+                           "contentSubtypes":  [
+                                                   "manga",
+                                                   "manhwa",
+                                                   "manhua"
+                                               ]
+                       },
+                       {
+                           "id":  "comickfan",
+                           "name":  "ComicK Fanmade",
+                           "version":  "0.1.0-cinder",
+                           "description":  "Read manga, manhwa, and manhua from ComicK Fanmade. No debrid required.",
+                           "contentType":  "manga",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/comickfan.js",
                            "minCinderVersion":  "2.0.0",
                            "contentTypes":  [
                                                 "manga"
