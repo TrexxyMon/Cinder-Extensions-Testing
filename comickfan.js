@@ -378,4 +378,5 @@ ComicKFan.getSettings = function() {
   return [];
 };
 
+__cinderExport = ComicKFan;
 if (typeof module !== "undefined") module.exports = ComicKFan;
