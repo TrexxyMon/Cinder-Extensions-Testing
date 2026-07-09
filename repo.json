@@ -1,5 +1,5 @@
 {
-    "version":  "2.1.79",
+    "version":  "2.1.80",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
@@ -142,7 +142,7 @@
                        {
                            "id":  "mangafire",
                            "name":  "MangaFire",
-                           "version":  "0.1.4-cinder",
+                           "version":  "0.1.5-cinder",
                            "description":  "Read manga, manhwa, and manhua from MangaFire. No debrid required.",
                            "contentType":  "manga",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/mangafire.js",

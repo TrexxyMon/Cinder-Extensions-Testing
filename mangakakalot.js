@@ -2,7 +2,7 @@ var MangaKakalot = {};
 
 MangaKakalot.id = "mangakakalot";
 MangaKakalot.name = "MangaKakalot";
-MangaKakalot.version = "0.1.4-cinder";
+MangaKakalot.version = "0.1.5-cinder";
 MangaKakalot.icon = "MK";
 MangaKakalot.description = "Read manga, manhwa, and manhua from MangaKakalot. No debrid required.";
 MangaKakalot.contentType = "manga";
@@ -87,6 +87,13 @@ MangaKakalot._absUrl = function(value) {
   if (/^https?:\/\//i.test(url)) return url;
   if (url.charAt(0) === "/") return this.BASE_URL + url;
   return this.BASE_URL + "/" + url.replace(/^\/+/, "");
+};
+
+MangaKakalot._freshImageUrl = function(value) {
+  var url = this._absUrl(value);
+  if (!url || !/2xstorage\.com/i.test(url)) return url;
+  if (/[?&]cinder_mk=/.test(url)) return url;
+  return url + (url.indexOf("?") === -1 ? "?" : "&") + "cinder_mk=015";
 };
 
 MangaKakalot._slugify = function(value) {
@@ -220,7 +227,7 @@ MangaKakalot._pagesFromUrls = function(urls, referer) {
     if (!this._isPageImage(url) || seen[url]) continue;
     seen[url] = true;
     pages.push({
-      url: url,
+      url: this._freshImageUrl(url),
       headers: this._imageHeaders(referer),
     });
   }
