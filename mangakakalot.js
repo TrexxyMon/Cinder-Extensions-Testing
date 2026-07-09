@@ -2,7 +2,7 @@ var MangaKakalot = {};
 
 MangaKakalot.id = "mangakakalot";
 MangaKakalot.name = "MangaKakalot";
-MangaKakalot.version = "0.1.1-cinder";
+MangaKakalot.version = "0.1.3-cinder";
 MangaKakalot.icon = "MK";
 MangaKakalot.description = "Read manga, manhwa, and manhua from MangaKakalot. No debrid required.";
 MangaKakalot.contentType = "manga";
@@ -70,6 +70,13 @@ MangaKakalot._attr = function(html, name) {
   var re = new RegExp(escaped + "\\s*=\\s*([\"'])(.*?)\\1", "i");
   var match = String(html).match(re);
   return match ? this._decode(match[2]) : "";
+};
+
+MangaKakalot._srcFromSrcset = function(value) {
+  var raw = this._decode(value || "");
+  if (!raw) return "";
+  var first = raw.split(",")[0] || "";
+  return first.trim().split(/\s+/)[0] || "";
 };
 
 MangaKakalot._absUrl = function(value) {
@@ -149,6 +156,18 @@ MangaKakalot._fetchJson = async function(url, options) {
     return JSON.parse(text);
   } catch (e) {
     throw new Error("MangaKakalot returned invalid JSON.");
+  }
+};
+
+MangaKakalot._pageImageReachable = async function(url, referer) {
+  try {
+    var res = await cinder.fetch(url, {
+      headers: this._imageHeaders(referer),
+      timeout: 12000,
+    });
+    return !!(res && res.status >= 200 && res.status < 300);
+  } catch (e) {
+    return false;
   }
 };
 
@@ -311,15 +330,42 @@ MangaKakalot.getPages = async function(chapterId) {
   var match;
   while ((match = imgRe.exec(reader)) !== null) {
     var tag = match[0];
-    var src = this._absUrl(this._attr(tag, "src") || this._attr(tag, "data-src"));
+    var src = this._absUrl(
+      this._attr(tag, "data-src") ||
+      this._attr(tag, "data-original") ||
+      this._attr(tag, "data-lazy-src") ||
+      this._attr(tag, "data-cfsrc") ||
+      this._attr(tag, "data-url") ||
+      this._srcFromSrcset(this._attr(tag, "data-srcset") || this._attr(tag, "srcset")) ||
+      this._attr(tag, "src")
+    );
     var alt = this._attr(tag, "alt");
-    var isPage = /2xstorage\.com/i.test(src) || /\bpage\s+\d+\b/i.test(alt);
-    if (!isPage || !src || /logo|banner|loading|loader|avatar|favicon|svg/i.test(src) || seen[src]) continue;
+    var isPage = /2xstorage\.com/i.test(src) || (/\bpage\s+\d+\b/i.test(alt) && /\.(?:jpe?g|png|webp|avif)(?:[?#].*)?$/i.test(src));
+    if (!isPage || !src || /logo|banner|loading|loader|placeholder|blank|avatar|favicon|svg/i.test(src) || seen[src]) continue;
     seen[src] = true;
     pages.push({
       url: src,
       headers: this._imageHeaders(url),
     });
+  }
+  if (pages.length === 0) {
+    var urlRe = /https?:\\?\/\\?\/[^"'\\\s<>]+?\.(?:jpe?g|png|webp|avif)(?:\?[^"'\\\s<>]*)?/gi;
+    while ((match = urlRe.exec(html)) !== null) {
+      var rawUrl = match[0].replace(/\\\//g, "/");
+      var imageUrl = this._absUrl(rawUrl);
+      if (!/2xstorage\.com/i.test(imageUrl) || /logo|banner|loading|loader|placeholder|blank|avatar|favicon|svg/i.test(imageUrl) || seen[imageUrl]) continue;
+      seen[imageUrl] = true;
+      pages.push({
+        url: imageUrl,
+        headers: this._imageHeaders(url),
+      });
+    }
+  }
+  if (pages.length > 0 && /https?:\/\/imgs-2\.2xstorage\.com\//i.test(pages[0].url)) {
+    var reachable = await this._pageImageReachable(pages[0].url, url);
+    if (!reachable) {
+      throw new Error("MangaKakalot returned unavailable image files for this chapter.");
+    }
   }
   if (pages.length === 0) throw new Error("MangaKakalot returned no pages for this chapter.");
   return pages;

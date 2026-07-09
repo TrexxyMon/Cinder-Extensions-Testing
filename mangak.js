@@ -2,7 +2,7 @@ var MangaK = {};
 
 MangaK.id = "mangak";
 MangaK.name = "MangaK";
-MangaK.version = "0.1.1-cinder";
+MangaK.version = "0.1.2-cinder";
 MangaK.icon = "MK";
 MangaK.description = "Read manga, manhwa, and manhua from MangaK. No debrid required.";
 MangaK.contentType = "manga";
@@ -74,6 +74,44 @@ MangaK._absUrl = function(value) {
   if (/^https?:\/\//i.test(url)) return url;
   if (url.charAt(0) === "/") return this.BASE_URL + url;
   return this.BASE_URL + "/" + url.replace(/^\/+/, "");
+};
+
+MangaK._looksLikePageImage = function(value) {
+  var url = String(value || "");
+  if (!url) return false;
+  if (!/\.(?:jpe?g|png|webp|avif)(?:[?#].*)?$/i.test(url)) return false;
+  if (/logo|banner|loading|loader|placeholder|blank|avatar|favicon|cover|thumb|svg/i.test(url)) return false;
+  return /qvzr|mangak|cdn|uploads|images|\/r\/p\//i.test(url);
+};
+
+MangaK._collectPageImages = function(value, pages, seen) {
+  if (!value) return;
+  if (typeof value === "string") {
+    var text = value.replace(/\\\//g, "/");
+    var direct = this._absUrl(text);
+    if (this._looksLikePageImage(direct) && !seen[direct]) {
+      seen[direct] = true;
+      pages.push(direct);
+      return;
+    }
+    var match;
+    var urlRe = /https?:\/\/[^"'\s<>]+?\.(?:jpe?g|png|webp|avif)(?:\?[^"'\s<>]*)?/gi;
+    while ((match = urlRe.exec(text)) !== null) {
+      var imageUrl = this._absUrl(match[0]);
+      if (!this._looksLikePageImage(imageUrl) || seen[imageUrl]) continue;
+      seen[imageUrl] = true;
+      pages.push(imageUrl);
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (var i = 0; i < value.length; i++) this._collectPageImages(value[i], pages, seen);
+    return;
+  }
+  if (typeof value === "object") {
+    var keys = Object.keys(value);
+    for (var j = 0; j < keys.length; j++) this._collectPageImages(value[keys[j]], pages, seen);
+  }
 };
 
 MangaK._pathFromUrl = function(value) {
@@ -336,17 +374,29 @@ MangaK.getPages = async function(chapterId) {
   var next = this._nextData(html);
   var chapter = next && next.props && next.props.pageProps && next.props.pageProps.initialChapter;
   var images = chapter && Array.isArray(chapter.images) ? chapter.images : [];
-  var pages = [];
+  var imageUrls = [];
   var seen = {};
   for (var i = 0; i < images.length; i++) {
     var imageUrl = this._absUrl(images[i]);
-    if (!imageUrl || seen[imageUrl]) continue;
+    if (!this._looksLikePageImage(imageUrl) || seen[imageUrl]) continue;
     seen[imageUrl] = true;
-    pages.push({
-      url: imageUrl,
-      headers: this._imageHeaders(url),
-    });
+    imageUrls.push(imageUrl);
   }
+  if (imageUrls.length === 0 && chapter) {
+    this._collectPageImages(chapter, imageUrls, seen);
+  }
+  if (imageUrls.length === 0 && next && next.props && next.props.pageProps) {
+    this._collectPageImages(next.props.pageProps, imageUrls, seen);
+  }
+  if (imageUrls.length === 0) {
+    this._collectPageImages(html, imageUrls, seen);
+  }
+  var pages = imageUrls.map(function(imageUrl) {
+    return {
+      url: imageUrl,
+      headers: MangaK._imageHeaders(url),
+    };
+  });
   if (pages.length === 0) throw new Error("MangaK returned no pages for this chapter.");
   return pages;
 };
