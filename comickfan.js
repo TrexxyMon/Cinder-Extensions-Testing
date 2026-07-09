@@ -2,7 +2,7 @@ var ComicKFan = {};
 
 ComicKFan.id = "comickfan";
 ComicKFan.name = "ComicK Fanmade";
-ComicKFan.version = "0.1.0-cinder";
+ComicKFan.version = "0.1.1-cinder";
 ComicKFan.icon = "CK";
 ComicKFan.description = "Read manga, manhwa, and manhua from ComicK Fanmade. No debrid required.";
 ComicKFan.contentType = "manga";
@@ -378,5 +378,6 @@ ComicKFan.getSettings = function() {
   return [];
 };
 
+var _cinderExport = ComicKFan;
 __cinderExport = ComicKFan;
 if (typeof module !== "undefined") module.exports = ComicKFan;

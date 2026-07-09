@@ -1,5 +1,5 @@
 {
-    "version":  "2.1.72",
+    "version":  "2.1.73",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
@@ -159,7 +159,7 @@
                        {
                            "id":  "comickfan",
                            "name":  "ComicK Fanmade",
-                           "version":  "0.1.0-cinder",
+                           "version":  "0.1.1-cinder",
                            "description":  "Read manga, manhwa, and manhua from ComicK Fanmade. No debrid required.",
                            "contentType":  "manga",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/comickfan.js",
