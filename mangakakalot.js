@@ -2,7 +2,7 @@ var MangaKakalot = {};
 
 MangaKakalot.id = "mangakakalot";
 MangaKakalot.name = "MangaKakalot";
-MangaKakalot.version = "0.1.0-cinder";
+MangaKakalot.version = "0.1.1-cinder";
 MangaKakalot.icon = "MK";
 MangaKakalot.description = "Read manga, manhwa, and manhua from MangaKakalot. No debrid required.";
 MangaKakalot.contentType = "manga";
@@ -37,7 +37,7 @@ MangaKakalot._imageHeaders = function(referer) {
   return {
     "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
-    "Referer": referer || this.BASE_URL + "/",
+    "Referer": this.BASE_URL + "/",
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
   };
 };

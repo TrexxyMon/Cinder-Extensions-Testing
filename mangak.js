@@ -2,7 +2,7 @@ var MangaK = {};
 
 MangaK.id = "mangak";
 MangaK.name = "MangaK";
-MangaK.version = "0.1.0-cinder";
+MangaK.version = "0.1.1-cinder";
 MangaK.icon = "MK";
 MangaK.description = "Read manga, manhwa, and manhua from MangaK. No debrid required.";
 MangaK.contentType = "manga";
@@ -277,6 +277,25 @@ MangaK._statusFromText = function(value) {
   return undefined;
 };
 
+MangaK._chapterNumberFromItem = function(item, fallback) {
+  var title = this._decode((item && item.name) || "");
+  var path = String((item && item.url) || "");
+  var candidates = [title, path];
+  for (var i = 0; i < candidates.length; i++) {
+    var text = candidates[i] || "";
+    var match =
+      text.match(/chapter[\s_-]*(\d+(?:\.\d+)?)/i) ||
+      text.match(/ch[\s._-]*(\d+(?:\.\d+)?)/i);
+    if (match) {
+      var parsed = parseFloat(match[1]);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  var apiNumber = parseFloat((item && (item.chapter || item.chapterNumber)) || "");
+  if (Number.isFinite(apiNumber)) return apiNumber;
+  return fallback;
+};
+
 MangaK.getChapters = async function(mangaId) {
   var id = this._idFromMangaId(mangaId);
   var slug = this._slugFromId(mangaId);
@@ -293,8 +312,7 @@ MangaK.getChapters = async function(mangaId) {
     var item = items[i] || {};
     var path = item.url || "";
     if (!path) continue;
-    var chapterNumber = parseFloat(item.chapter_number || item.chapterNumber || "0");
-    if (!Number.isFinite(chapterNumber)) chapterNumber = i + 1;
+    var chapterNumber = this._chapterNumberFromItem(item, i + 1);
     var chapterId = this._pathFromUrl(path);
     if (seen[chapterId]) continue;
     seen[chapterId] = true;
@@ -307,7 +325,7 @@ MangaK.getChapters = async function(mangaId) {
   }
   if (chapters.length === 0) throw new Error("MangaK returned no chapters.");
   return chapters.sort(function(a, b) {
-    return b.chapterNumber - a.chapterNumber;
+    return a.chapterNumber - b.chapterNumber;
   });
 };
 
