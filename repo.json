@@ -162,7 +162,7 @@
                            "version":  "0.1.1-cinder",
                            "description":  "Read manga, manhwa, and manhua from ComicK Fanmade. No debrid required.",
                            "contentType":  "manga",
-                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/comickfan.js",
+                           "scriptUrl":  "https://cdn.jsdelivr.net/gh/TrexxyMon/Cinder-Extensions-Testing@main/comickfan.js?v=0.1.1-cinder",
                            "minCinderVersion":  "2.0.0",
                            "contentTypes":  [
                                                 "manga"
