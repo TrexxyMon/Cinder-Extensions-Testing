@@ -2,7 +2,7 @@ var LiteroticaSource = {};
 
 LiteroticaSource.id = "literotica";
 LiteroticaSource.name = "Literotica";
-LiteroticaSource.version = "0.1.0-cinder";
+LiteroticaSource.version = "0.1.1-cinder";
 LiteroticaSource.icon = "LT";
 LiteroticaSource.description = "Search adult fiction from Literotica and build stories into EPUB on device. No debrid required.";
 LiteroticaSource.contentType = "books";
@@ -322,6 +322,12 @@ LiteroticaSource._parseSearchResultsWithDom = function(html) {
 			isAdult: true,
 			publishedDate: dateMeta ? this._decode(dateMeta.attr("content") || "") : undefined,
 			genres: categoryNode ? [this._decode(categoryNode.text()).replace(/\s+\d{1,2}\/\d{1,2}\/\d{2,4}$/, "").trim()] : undefined,
+			extra: {
+				description: headline ? this._decode(headline.text()) : undefined,
+				contentType: "webnovel",
+				contentSubtypes: ["adultFiction", "webFiction"],
+				isAdult: true,
+			},
 		});
 	}
 	return results;
@@ -375,6 +381,12 @@ LiteroticaSource._parseSearchResultsWithRegex = function(html) {
 			isAdult: true,
 			publishedDate: date ? this._decode(date[1]) : undefined,
 			genres: category ? [this._stripTags(category[1])] : undefined,
+			extra: {
+				description: headline ? this._stripTags(headline[1]) : undefined,
+				contentType: "webnovel",
+				contentSubtypes: ["adultFiction", "webFiction"],
+				isAdult: true,
+			},
 		});
 	}
 	return results;

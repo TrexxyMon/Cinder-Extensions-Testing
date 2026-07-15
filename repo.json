@@ -1,5 +1,5 @@
 {
-    "version":  "2.1.83",
+    "version":  "2.1.84",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
@@ -70,7 +70,7 @@
                        {
                            "id":  "literotica",
                            "name":  "Literotica",
-                           "version":  "0.1.0-cinder",
+                           "version":  "0.1.1-cinder",
                            "description":  "Search adult fiction from Literotica and build stories into EPUB on device. No debrid required.",
                            "contentType":  "books",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/literotica.js",
