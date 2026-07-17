@@ -2,7 +2,7 @@ var FreeMagazinesSource = {};
 
 FreeMagazinesSource.id = "freemagazines";
 FreeMagazinesSource.name = "FreeMagazines.top";
-FreeMagazinesSource.version = "1.1.7-cinder";
+FreeMagazinesSource.version = "1.1.8-cinder";
 FreeMagazinesSource.icon = "\uD83D\uDCF0";
 FreeMagazinesSource.description = "Browse and search PDF magazines from FreeMagazines.top with on-device resolution.";
 FreeMagazinesSource.contentType = "magazine";
@@ -137,17 +137,50 @@ FreeMagazinesSource._parseListings = function(html) {
 	return results;
 };
 
-FreeMagazinesSource._extractLimeWireUrl = function(html) {
+FreeMagazinesSource._normalizeLimeWireUrl = function(value, baseUrl) {
+	var raw = String(value || "").trim();
+	if (!raw) return "";
+	raw = this._decode(raw)
+		.replace(/\\\//g, "/")
+		.replace(/&amp;/gi, "&")
+		.replace(/^\/\//, "https://");
+	if (/^https?%3a%2f%2f/i.test(raw)) {
+		try { raw = decodeURIComponent(raw); } catch (err) {}
+	}
+	if (baseUrl && raw.indexOf("download_gateway=") >= 0) {
+		try { raw = cinder.resolveUrl(raw, baseUrl); } catch (err2) {}
+	}
+	var gatewayMatch = raw.match(/[?&]download_gateway=([^&#]+)/i);
+	if (gatewayMatch) {
+		var encoded = gatewayMatch[1] || "";
+		try { encoded = decodeURIComponent(encoded); } catch (err3) {}
+		var decoded = this._decodeBase64Url(encoded);
+		if (decoded) return this._normalizeLimeWireUrl(decoded, baseUrl);
+	}
+	var match = raw.match(/https?:\/\/(?:www\.)?limewire\.com\/d\/[A-Za-z0-9]+(?:#[A-Za-z0-9_\-]+)?/i);
+	if (!match) return "";
+	return this._normalizeUrl(match[0].replace(/:\/\/www\.limewire\.com\//i, "://limewire.com/"));
+};
+
+FreeMagazinesSource._extractLimeWireUrl = function(html, baseUrl) {
 	var doc = cinder.parseHTML(html || "");
 	var links = doc.querySelectorAll("a[href]");
 	for (var i = 0; i < links.length; i++) {
 		var href = links[i].attr("href") || "";
-		if (href.indexOf("https://limewire.com/d/") === 0 || href.indexOf("http://limewire.com/d/") === 0) {
-			return this._normalizeUrl(href);
-		}
+		var found = this._normalizeLimeWireUrl(href, baseUrl);
+		if (found) return found;
 	}
-	var match = String(html || "").match(/https?:\/\/limewire\.com\/d\/[A-Za-z0-9]+(?:#[A-Za-z0-9_\-]+)?/);
-	return match ? this._normalizeUrl(match[0]) : "";
+	var text = String(html || "");
+	var variants = [
+		text,
+		this._decode(text).replace(/\\\//g, "/"),
+	];
+	try { variants.push(decodeURIComponent(text)); } catch (err) {}
+	for (var j = 0; j < variants.length; j++) {
+		var direct = this._normalizeLimeWireUrl(variants[j], baseUrl);
+		if (direct) return direct;
+	}
+	return "";
 };
 
 FreeMagazinesSource._getHeader = function(headers, name) {
@@ -450,7 +483,7 @@ FreeMagazinesSource.resolve = async function(item) {
 	});
 
 	var html = article && article.data ? article.data : "";
-	var limeUrl = this._extractLimeWireUrl(html);
+	var limeUrl = this._extractLimeWireUrl(html, pageUrl);
 
 	if (!limeUrl) {
 		cinder.log("[FreeMagazines] LimeWire link not in static HTML; trying browser-rendered article page.");
@@ -463,7 +496,7 @@ FreeMagazinesSource.resolve = async function(item) {
 			}),
 		});
 		html = browserArticle && browserArticle.data ? browserArticle.data : "";
-		limeUrl = this._extractLimeWireUrl(html);
+		limeUrl = this._extractLimeWireUrl(html, pageUrl);
 	}
 
 	if (!limeUrl) throw new Error("No LimeWire download link found on the magazine page.");
