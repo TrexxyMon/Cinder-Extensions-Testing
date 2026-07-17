@@ -2,7 +2,7 @@ var ReadAllComics = {};
 
 ReadAllComics.id = "readallcomics";
 ReadAllComics.name = "ReadAllComics";
-ReadAllComics.version = "0.1.3-cinder";
+ReadAllComics.version = "0.1.1-cinder";
 ReadAllComics.icon = "RAC";
 ReadAllComics.description = "Read western comics from ReadAllComics.";
 ReadAllComics.contentType = "comics";
@@ -122,33 +122,24 @@ ReadAllComics._fetchHtml = async function(url, options) {
   try {
     res = await cinder.fetch(url, fetchOptions);
   } catch (error) {
-    res = null;
-  }
-
-  var html = res && res.data ? String(res.data || "") : "";
-  var blocked = !res || res.status < 200 || res.status >= 300 || !html || /cloudflare|just a moment|checking your browser|error\s*52[0-9]/i.test(html);
-  if (blocked && cinder.fetchBrowser) {
-    try {
+    if (options.allowMissing) return "";
+    if (cinder.fetchBrowser) {
       res = await cinder.fetchBrowser(url, {
         headers: this._headers(Object.assign({
           "X-Cinder-Suppress-Interactive": "1",
-          "X-Cinder-Min-Wait-Ms": "1400",
-          "X-Cinder-Max-Wait-Ms": "12000",
-          "X-Cinder-Wake-Page": "1",
+          "X-Cinder-Min-Wait-Ms": "1200",
+          "X-Cinder-Max-Wait-Ms": "8000",
         }, options.headers || {})),
       });
-      html = res && res.data ? String(res.data || "") : "";
-      blocked = !res || res.status < 200 || res.status >= 300 || !html || /cloudflare|just a moment|checking your browser|error\s*52[0-9]/i.test(html);
-    } catch (browserError) {
-      blocked = true;
+    } else {
+      throw error;
     }
   }
-
-  if (blocked) {
+  if (!res || res.status < 200 || res.status >= 300 || !res.data) {
     if (options.allowMissing) return "";
     throw new Error("ReadAllComics request failed for " + url);
   }
-  return html;
+  return String(res.data || "");
 };
 
 ReadAllComics._imageFromHtml = function(html) {
@@ -165,22 +156,6 @@ ReadAllComics._imageFromHtml = function(html) {
 ReadAllComics._parseSeriesList = function(html) {
   var results = [];
   var seen = {};
-  function pushItem(url, title, cover, author, self) {
-    var path = self._pathFromUrl(url);
-    if (!/^\/category\//i.test(path) || seen[path]) return;
-    seen[path] = true;
-    results.push({
-      id: path,
-      title: title || self._titleFromSlug(path),
-      author: author || "Various",
-      cover: cover || "",
-      coverHeaders: cover ? self._imageHeaders(url) : undefined,
-      url: self._absUrl(path),
-      format: "comics",
-      contentType: "comics",
-      contentTypes: ["comic"],
-    });
-  }
 
   if (cinder.parseHTML) {
     var doc = cinder.parseHTML(html);
@@ -216,20 +191,6 @@ ReadAllComics._parseSeriesList = function(html) {
     }
     if (results.length > 0) return results;
   }
-
-  var anchorRe = /<a[^>]+href=["']([^"']*\/category\/[^"'#?]+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-  var anchorMatch;
-  while ((anchorMatch = anchorRe.exec(html)) !== null) {
-    var label = this._stripTags(anchorMatch[2]);
-    if (!label || /report errors|request comics|privacy|terms|legal|page\s*[0-9]+|login|sign up/i.test(label)) continue;
-    var href = this._absUrl(anchorMatch[1]);
-    var context = html.slice(Math.max(0, anchorMatch.index - 900), Math.min(html.length, anchorRe.lastIndex + 900));
-    var imgTag = (context.match(/<img[\s\S]*?>/i) || [])[0] || "";
-    var coverUrl = this._imageFromHtml(imgTag);
-    var publisher = this._stripTags((context.match(/Publisher:\s*(?:<[^>]+>)*\s*([^<\n]+)/i) || [])[1]);
-    pushItem(href, label.replace(/\s*\(Publisher:[\s\S]*?\)\s*$/i, ""), coverUrl, publisher, this);
-  }
-  if (results.length > 0) return results;
 
   var blockRe = /<li[^>]*style=["'][^"']*display\s*:\s*flex[\s\S]*?(?=<li[^>]*style=["'][^"']*display\s*:\s*flex|<\/ul>\s*<\/div>|<nav|$)/gi;
   var match;
@@ -311,35 +272,27 @@ ReadAllComics.search = async function(query, page) {
     results.push(item);
   }
 
-  var encodedQuery = encodeURIComponent(query).replace(/%20/g, "+");
-  var searchPath = page > 0
-    ? "/page/" + (page + 1) + "/?story=" + encodedQuery + "&type=comic"
-    : "/?story=" + encodedQuery + "&type=comic";
-  var searchHtml = await this._fetchHtml(this._absUrl(searchPath), { allowMissing: true, timeout: 20000 });
-  this._parseSeriesList(searchHtml).forEach(add);
-
   if (page === 0) {
     var candidates = this._categoryCandidatePaths(query);
     for (var i = 0; i < candidates.length; i++) {
       var path = candidates[i];
-      var html = await this._fetchHtml(this._absUrl(path), { allowMissing: true, timeout: 14000 });
+      var html = await this._fetchHtml(this._absUrl(path), { allowMissing: true, timeout: 12000 });
       add(this._categoryResultFromHtml(path, html));
     }
   }
 
-  if (results.length === 0) {
-    var latestPath = page > 0 ? "/page/" + (page + 1) + "/" : "/";
-    var latestHtml = await this._fetchHtml(this._absUrl(latestPath), { allowMissing: true, timeout: 18000 });
-    var latest = this._parseSeriesList(latestHtml);
-    var normalizedQuery = this._slugify(query).replace(/-/g, " ");
-    latest.forEach(function(item) {
-      var normalizedTitle = ReadAllComics._slugify(item.title).replace(/-/g, " ");
-      if (normalizedTitle.indexOf(normalizedQuery) !== -1 || normalizedQuery.indexOf(normalizedTitle) !== -1) add(item);
-    });
-  }
+  var latestPath = page > 0 ? "/page/" + (page + 1) + "/" : "/";
+  var latestHtml = await this._fetchHtml(this._absUrl(latestPath), { allowMissing: true, timeout: 15000 });
+  var latest = this._parseSeriesList(latestHtml);
+  var normalizedQuery = this._slugify(query).replace(/-/g, " ");
+  latest.forEach(function(item) {
+    var normalizedTitle = ReadAllComics._slugify(item.title).replace(/-/g, " ");
+    if (normalizedTitle.indexOf(normalizedQuery) !== -1 || normalizedQuery.indexOf(normalizedTitle) !== -1) add(item);
+  });
 
   return results;
 };
+
 ReadAllComics.getDiscoverSections = async function() {
   return [
     { id: "latest", title: "Latest Comics", icon: "time" },
