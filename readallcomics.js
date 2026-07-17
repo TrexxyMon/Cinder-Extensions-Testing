@@ -2,7 +2,7 @@ var ReadAllComics = {};
 
 ReadAllComics.id = "readallcomics";
 ReadAllComics.name = "ReadAllComics";
-ReadAllComics.version = "0.1.5-cinder";
+ReadAllComics.version = "0.1.4-cinder";
 ReadAllComics.icon = "RAC";
 ReadAllComics.description = "Read western comics from ReadAllComics.";
 ReadAllComics.contentType = "comics";
@@ -114,27 +114,7 @@ ReadAllComics._titleFromSlug = function(value) {
 
 ReadAllComics._fetchHtml = async function(url, options) {
   options = options || {};
-  var res = null;
-  var html = "";
-  var browserHeaders = this._headers(Object.assign({
-    "X-Cinder-Suppress-Interactive": "1",
-    "X-Cinder-Min-Wait-Ms": String(options.browserMinWait || 1400),
-    "X-Cinder-Max-Wait-Ms": String(options.browserMaxWait || 12000),
-    "X-Cinder-Wake-Page": "1",
-  }, options.headers || {}));
-
-  function isBlocked(response, body) {
-    return !response || response.status < 200 || response.status >= 300 || !body || /cloudflare|just a moment|checking your browser|web server is down|error\s*52[0-9]/i.test(body);
-  }
-
-  if (options.browserFirst !== false && cinder.fetchBrowser) {
-    try {
-      res = await cinder.fetchBrowser(url, { headers: browserHeaders });
-      html = res && res.data ? String(res.data || "") : "";
-      if (!isBlocked(res, html)) return html;
-    } catch (browserError) {}
-  }
-
+  var res;
   var fetchOptions = {
     headers: this._headers(options.headers),
     timeout: options.timeout || 25000,
@@ -144,15 +124,27 @@ ReadAllComics._fetchHtml = async function(url, options) {
   } catch (error) {
     res = null;
   }
-  html = res && res.data ? String(res.data || "") : "";
-  if (isBlocked(res, html) && options.browserFirst === false && cinder.fetchBrowser) {
+
+  var html = res && res.data ? String(res.data || "") : "";
+  var blocked = !res || res.status < 200 || res.status >= 300 || !html || /cloudflare|just a moment|checking your browser|error\s*52[0-9]/i.test(html);
+  if (blocked && cinder.fetchBrowser) {
     try {
-      res = await cinder.fetchBrowser(url, { headers: browserHeaders });
+      res = await cinder.fetchBrowser(url, {
+        headers: this._headers(Object.assign({
+          "X-Cinder-Suppress-Interactive": "1",
+          "X-Cinder-Min-Wait-Ms": "1400",
+          "X-Cinder-Max-Wait-Ms": String(options.browserMaxWait || 12000),
+          "X-Cinder-Wake-Page": "1",
+        }, options.headers || {})),
+      });
       html = res && res.data ? String(res.data || "") : "";
-    } catch (browserError) {}
+      blocked = !res || res.status < 200 || res.status >= 300 || !html || /cloudflare|just a moment|checking your browser|error\s*52[0-9]/i.test(html);
+    } catch (browserError) {
+      blocked = true;
+    }
   }
 
-  if (isBlocked(res, html)) {
+  if (blocked) {
     if (options.allowMissing) return "";
     throw new Error("ReadAllComics request failed for " + url);
   }
