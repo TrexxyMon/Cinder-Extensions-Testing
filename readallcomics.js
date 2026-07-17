@@ -2,7 +2,7 @@ var ReadAllComics = {};
 
 ReadAllComics.id = "readallcomics";
 ReadAllComics.name = "ReadAllComics";
-ReadAllComics.version = "0.1.4-cinder";
+ReadAllComics.version = "0.1.3-cinder";
 ReadAllComics.icon = "RAC";
 ReadAllComics.description = "Read western comics from ReadAllComics.";
 ReadAllComics.contentType = "comics";
@@ -133,7 +133,7 @@ ReadAllComics._fetchHtml = async function(url, options) {
         headers: this._headers(Object.assign({
           "X-Cinder-Suppress-Interactive": "1",
           "X-Cinder-Min-Wait-Ms": "1400",
-          "X-Cinder-Max-Wait-Ms": String(options.browserMaxWait || 12000),
+          "X-Cinder-Max-Wait-Ms": "12000",
           "X-Cinder-Wake-Page": "1",
         }, options.headers || {})),
       });
@@ -302,13 +302,6 @@ ReadAllComics.search = async function(query, page) {
   query = String(query || "").trim();
   page = page || 0;
   if (!query) return this.getDiscoverItems("latest", page);
-  if (this._slugify(query) === "test") {
-    var testHtml = await this._fetchHtml(this._absUrl(page > 0 ? "/page/" + (page + 1) + "/" : "/"), {
-      timeout: 6000,
-      browserMaxWait: 6000,
-    });
-    return this._parseSeriesList(testHtml).slice(0, 10);
-  }
 
   var results = [];
   var seen = {};
