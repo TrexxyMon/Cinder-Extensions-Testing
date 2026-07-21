@@ -1,8 +1,23 @@
-{
+﻿{
     "version":  "2.1.84",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
+                       {
+                           "id":  "bookracy",
+                           "name":  "Bookracy",
+                           "version":  "0.1.0-cinder",
+                           "description":  "Search and download ebooks from Bookracy — a free, open-source library of millions of books, comics, and manga.",
+                           "contentType":  "books",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/bookracy.js",
+                           "minCinderVersion":  "2.0.0",
+                           "contentTypes":  [
+                                                "ebook",
+                                                "comic",
+                                                "manga"
+                                            ],
+                           "excludeFromDefaultMetadataProviders":  true
+                       },
                        {
                            "id":  "bbato",
                            "name":  "BBato",
