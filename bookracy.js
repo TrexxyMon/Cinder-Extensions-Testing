@@ -1,4 +1,4 @@
-// ─── Bookracy Extension v0.1.0 ──────────────────────────────
+// ─── Bookracy Extension v0.1.1 ──────────────────────────────
 //
 // Bookracy is a free, open-source library of millions of books,
 // comics, manga, articles and publications. This extension
@@ -11,7 +11,7 @@ var BookracySource = {};
 
 BookracySource.id = "bookracy";
 BookracySource.name = "Bookracy";
-BookracySource.version = "0.1.0-cinder";
+BookracySource.version = "0.1.1-cinder";
 BookracySource.icon = "📖";
 BookracySource.description = "Search and download ebooks from Bookracy — a free, open-source library of millions of books, comics, and manga.";
 BookracySource.contentType = "books";
@@ -30,6 +30,14 @@ BookracySource.capabilities = {
 BookracySource.API_BASE = "https://api.bookracy.com";
 BookracySource.SUPPORTED_FORMATS = ["epub", "pdf", "cbz", "cbr"];
 
+// ── Pre-built headers (avoids object allocation on every call) ──
+
+BookracySource._REQ_HEADERS = {
+	"User-Agent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36",
+	"Accept": "application/json",
+	"Referer": "https://bookracy.com/",
+};
+
 // ── Discover Sections ──
 
 BookracySource.DISCOVER_SECTIONS = [
@@ -38,15 +46,6 @@ BookracySource.DISCOVER_SECTIONS = [
 ];
 
 // ── Helpers ──
-
-BookracySource._headers = function(referer) {
-	return {
-		"User-Agent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36",
-		"Accept": "application/json, text/plain, */*",
-		"Accept-Language": "en-US,en;q=0.9",
-		"Referer": referer || "https://bookracy.com/",
-	};
-};
 
 BookracySource._clean = function(value) {
 	return cinder.normalizeText(String(value || ""))
@@ -89,10 +88,9 @@ BookracySource._apiFetch = async function(path, queryParams) {
 		if (parts.length > 0) url += "?" + parts.join("&");
 	}
 
-	cinder.log("[Bookracy] Fetching: " + url);
 	var resp = await cinder.fetch(url, {
-		headers: this._headers("https://bookracy.com/"),
-		timeout: 20000,
+		headers: this._REQ_HEADERS,
+		timeout: 10000,
 	});
 
 	if (!resp || resp.status < 200 || resp.status >= 300) {
@@ -115,21 +113,16 @@ BookracySource._resultFromItem = function(item) {
 
 	var author = this._clean(item.author || "");
 
+	// The API always provides a direct download link
 	var downloadUrl = item.link || "";
-	if (!downloadUrl && item.md5) {
-		var encodedTitle = encodeURIComponent(title);
-		var encodedAuthor = author ? encodeURIComponent(author) : "";
-		downloadUrl = this.API_BASE + "/download/" + item.md5 + "/" + encodedTitle + "." + format;
-		if (encodedAuthor) {
-			downloadUrl += "?author=" + encodedAuthor;
-		}
-	}
 
+	// Build cover URL from md5 if not provided
 	var coverUrl = item.book_image || "";
 	if (!coverUrl && item.md5) {
 		coverUrl = this.API_BASE + "/cover/" + item.md5 + "/thumbnail.jpg";
 	}
 
+	// Stable ID from md5 + format
 	var id = (item.md5 || this._slug(title)) + "#" + format;
 
 	return {
@@ -164,7 +157,7 @@ BookracySource.search = async function(query, page) {
 		var data = await this._apiFetch("/books", {
 			query: String(query).trim(),
 			lang: "all",
-			limit: 50,
+			limit: 8,
 		});
 
 		var items = data.results || [];
@@ -179,7 +172,6 @@ BookracySource.search = async function(query, page) {
 			}
 		}
 
-		cinder.log("[Bookracy] Search returned " + results.length + " results for: " + query);
 		return results;
 	} catch (err) {
 		cinder.warn("[Bookracy] Search failed: " + (err && err.message ? err.message : String(err)));
@@ -216,7 +208,6 @@ BookracySource.getDiscoverItems = async function(sectionId, page) {
 		var perPage = 50;
 		var start = pageNum * perPage;
 
-		cinder.log("[Bookracy] Discover '" + sectionId + "' returned " + results.length + " items");
 		return results.slice(start, start + perPage);
 	} catch (err) {
 		cinder.warn("[Bookracy] Discover failed: " + (err && err.message ? err.message : String(err)));
@@ -245,17 +236,11 @@ BookracySource.resolve = async function(item) {
 		throw new Error("No download URL available for this Bookracy result.");
 	}
 
-	var fileName = this._fileName(item, format);
-
-	cinder.log("[Bookracy] Resolving download: " + downloadUrl);
-
 	return {
 		url: downloadUrl,
-		fileName: fileName,
+		fileName: this._fileName(item, format),
 		headers: {
 			"Referer": "https://bookracy.com/",
-			"User-Agent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36",
-			"Accept": "application/octet-stream, application/epub+zip, application/pdf, */*",
 		},
 	};
 };

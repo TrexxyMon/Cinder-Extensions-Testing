@@ -6,7 +6,7 @@
                        {
                            "id":  "bookracy",
                            "name":  "Bookracy",
-                           "version":  "0.1.0-cinder",
+                           "version":  "0.1.1-cinder",
                            "description":  "Search and download ebooks from Bookracy — a free, open-source library of millions of books, comics, and manga.",
                            "contentType":  "books",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/bookracy.js",
@@ -191,3 +191,4 @@
                        }
                    ]
 }
+
