@@ -2,7 +2,7 @@ var NovelUpdatesSource = {};
 
 NovelUpdatesSource.id = "novelupdates";
 NovelUpdatesSource.name = "NovelUpdates";
-NovelUpdatesSource.version = "0.1.1-cinder";
+NovelUpdatesSource.version = "0.1.2-cinder";
 NovelUpdatesSource.icon = "NU";
 NovelUpdatesSource.description =
 	"Search and discover translated web novels, view metadata, and build available chapters into EPUB. Some chapter links require a signed-in website session.";
@@ -333,6 +333,149 @@ NovelUpdatesSource._absolutizeMarkup = function(html, baseUrl) {
 	);
 };
 
+NovelUpdatesSource._isBlockedChapterPage = function(html) {
+	var source = String(html || "");
+	var text = this._decode(source).slice(0, 4000);
+	return /just a moment|checking your browser|verify you are human|access denied|enable javascript and cookies|security check|captcha/i.test(
+		text,
+	);
+};
+
+NovelUpdatesSource._scoreChapterContainer = function(element) {
+	var text = this._decode(element.text());
+	if (text.length < 120) return -1;
+	if (
+		/just a moment|checking your browser|verify you are human|access denied|enable javascript and cookies|security check|captcha/i.test(
+			text.slice(0, 1000),
+		)
+	) {
+		return -1;
+	}
+
+	var className = String(element.attr("class") || "").toLowerCase();
+	var id = String(element.attr("id") || "").toLowerCase();
+	var meta = className + " " + id;
+	if (
+		/\b(comment|comments|navigation|navbar|sidebar|widget|advert|cookie|footer|header|menu|related|recommend|share|social|pagination|breadcrumb)\b/.test(
+			meta,
+		)
+	) {
+		return -1;
+	}
+
+	var paragraphs = element.querySelectorAll("p").length;
+	var breaks = element.querySelectorAll("br").length;
+	if (paragraphs < 2 && breaks < 3 && text.length < 500) return -1;
+
+	var links = element.querySelectorAll("a");
+	var linkTextLength = 0;
+	for (var i = 0; i < links.length; i++) {
+		linkTextLength += this._decode(links[i].text()).length;
+	}
+	if (linkTextLength > text.length * 0.45) return -1;
+
+	var score =
+		Math.min(text.length, 12000) +
+		Math.min(paragraphs, 80) * 180 +
+		Math.min(breaks, 120) * 35;
+	if (/\b(chapter|entry|post|article|reader|reading|story|novel)\b/.test(meta)) {
+		score += 4500;
+	}
+	if (/\b(content|text|body)\b/.test(meta)) score += 2500;
+	if (element.tagName === "article") score += 3500;
+	if (element.tagName === "main") score += 1000;
+	if (element.querySelectorAll("article").length > 1) score -= 6000;
+	if (element.querySelectorAll("nav, aside, footer").length > 1) score -= 2500;
+	return score;
+};
+
+NovelUpdatesSource._findChapterContent = function(html) {
+	if (!html || this._isBlockedChapterPage(html)) return null;
+	var doc = cinder.parseHTML(String(html));
+	var selectors = [
+		"[itemprop='articleBody']",
+		"[itemprop='text']",
+		"[role='article']",
+		".chapter-content",
+		"#chapter-content",
+		"#chr-content",
+		".chapter__content",
+		".chapter-body",
+		".chapter-text",
+		".chapterText",
+		".reading-content",
+		".reader-content",
+		".entry-content",
+		".post-content",
+		".post-body",
+		".post-entry",
+		".article-content",
+		".story-content",
+		".novel-content",
+		"article .content",
+		"article",
+		"main",
+		"section",
+		"div",
+	];
+	var best = null;
+	var bestScore = -1;
+	var seen = {};
+	for (var i = 0; i < selectors.length; i++) {
+		var candidates = doc.querySelectorAll(selectors[i]);
+		for (var j = 0; j < candidates.length; j++) {
+			var candidate = candidates[j];
+			var markup = candidate.html();
+			var key =
+				candidate.tagName +
+				"|" +
+				String(candidate.attr("id") || "") +
+				"|" +
+				String(candidate.attr("class") || "") +
+				"|" +
+				String(markup.length) +
+				"|" +
+				this._decode(candidate.text()).slice(0, 80);
+			if (!markup || seen[key]) continue;
+			seen[key] = true;
+			var score = this._scoreChapterContainer(candidate);
+			if (score > bestScore) {
+				best = candidate;
+				bestScore = score;
+			}
+		}
+	}
+	return best;
+};
+
+NovelUpdatesSource._fetchChapterHtml = async function(url) {
+	var response = null;
+	try {
+		response = await cinder.fetch(url, {
+			headers: {
+				Accept: "text/html,application/xhtml+xml",
+				"Accept-Language": "en-US,en;q=0.9",
+			},
+			timeout: 5000,
+		});
+	} catch (_) {}
+	var html = response && response.data ? String(response.data) : "";
+	if (this._findChapterContent(html)) return html;
+
+	if (!cinder.fetchBrowser) return html;
+	var headers = this._browserHeaders(
+		"article, main, [itemprop='articleBody'], .entry-content, .chapter-content, p",
+	);
+	headers["X-Cinder-Min-Wait-Ms"] = "1500";
+	headers["X-Cinder-Max-Wait-Ms"] = "23000";
+	response = await cinder.fetchBrowser(url, {
+		browserUserAgent: "desktop",
+		headers: headers,
+		timeout: 24000,
+	});
+	return response && response.data ? String(response.data) : "";
+};
+
 NovelUpdatesSource.getBookChapter = async function(chapterId) {
 	var payload = {};
 	try {
@@ -342,33 +485,13 @@ NovelUpdatesSource.getBookChapter = async function(chapterId) {
 	}
 	var url = this._absoluteUrl(payload.url, this.BASE_URL);
 	if (!url) throw new Error("Invalid chapter URL.");
-	var html = await this._fetchHtml(url, "body");
-	var doc = cinder.parseHTML(html);
-	var selectors = [
-		"[itemprop='articleBody']",
-		".chapter-content",
-		"#chapter-content",
-		".chapter__content",
-		".chapter-body",
-		".reading-content",
-		".reader-content",
-		".entry-content",
-		".post-content",
-		"article .content",
-		"article",
-		"main",
-	];
-	var content = null;
-	for (var i = 0; i < selectors.length; i++) {
-		var candidate = doc.querySelector(selectors[i]);
-		if (candidate && this._decode(candidate.text()).length >= 120) {
-			content = candidate;
-			break;
-		}
-	}
+	var html = await this._fetchChapterHtml(url);
+	var content = this._findChapterContent(html);
 	if (!content) {
 		throw new Error(
-			"Could not identify the chapter text on this translator website.",
+			"Could not identify the chapter text on " +
+				url.replace(/^(https?:\/\/[^/]+).*$/i, "$1") +
+				". Open that translator site in the extension browser if it requires a login or challenge.",
 		);
 	}
 	var body = this._stripUnsafeMarkup(content.html());
