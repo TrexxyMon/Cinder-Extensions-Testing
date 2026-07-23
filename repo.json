@@ -173,6 +173,28 @@
                                                    "manhwa",
                                                    "manhua"
                                                ]
+                       },
+                       {
+                           "id":  "novelupdates",
+                           "name":  "NovelUpdates",
+                           "version":  "0.1.0-cinder",
+                           "description":  "Search and discover translated web novels, view metadata, and build available chapters into EPUB. Some chapter links require a signed-in website session.",
+                           "contentType":  "webnovel",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/novelupdates.js",
+                           "minCinderVersion":  "1.1.0",
+                           "contentTypes":  [
+                                                "webnovel",
+                                                "ebook"
+                                            ],
+                           "contentSubtypes":  [
+                                                   "lightNovel",
+                                                   "translatedNovel"
+                                               ],
+                           "browser":  {
+                                           "startUrl":  "https://www.novelupdates.com/",
+                                           "userAgent":  "desktop",
+                                           "requiresAuth":  true
+                                       }
                        }
                    ]
 }
