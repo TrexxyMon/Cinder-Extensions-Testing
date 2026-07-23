@@ -177,7 +177,7 @@
                        {
                            "id":  "novelupdates",
                            "name":  "NovelUpdates",
-                           "version":  "0.1.0-cinder",
+                           "version":  "0.1.1-cinder",
                            "description":  "Search and discover translated web novels, view metadata, and build available chapters into EPUB. Some chapter links require a signed-in website session.",
                            "contentType":  "webnovel",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/novelupdates.js",

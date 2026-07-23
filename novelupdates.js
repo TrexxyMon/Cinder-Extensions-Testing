@@ -2,7 +2,7 @@ var NovelUpdatesSource = {};
 
 NovelUpdatesSource.id = "novelupdates";
 NovelUpdatesSource.name = "NovelUpdates";
-NovelUpdatesSource.version = "0.1.0-cinder";
+NovelUpdatesSource.version = "0.1.1-cinder";
 NovelUpdatesSource.icon = "NU";
 NovelUpdatesSource.description =
 	"Search and discover translated web novels, view metadata, and build available chapters into EPUB. Some chapter links require a signed-in website session.";
@@ -252,6 +252,7 @@ NovelUpdatesSource._fetchChapterListHtml = async function(seriesUrl, postId) {
 
 	if (!cinder.fetchBrowser) return html;
 	var browserHeaders = this._browserHeaders("li.sp_li_chp");
+	browserHeaders["X-Cinder-Suppress-Interactive"] = "1";
 	for (var key in headers) browserHeaders[key] = headers[key];
 	response = await cinder.fetchBrowser(this.AJAX_URL, {
 		method: "POST",
