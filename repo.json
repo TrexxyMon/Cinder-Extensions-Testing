@@ -1,5 +1,5 @@
 ﻿{
-    "version":  "2.1.84",
+    "version":  "2.1.85",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
@@ -115,8 +115,8 @@
                        {
                            "id":  "batcave",
                            "name":  "BatCave",
-                           "version":  "0.1.6-cinder",
-                           "description":  "Read western comics from BatCave.",
+                           "version":  "0.2.0-cinder",
+                           "description":  "Read western comics from BatCave. No debrid required.",
                            "contentType":  "comics",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/batcave.js",
                            "minCinderVersion":  "2.0.0",
