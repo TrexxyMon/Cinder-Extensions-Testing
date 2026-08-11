@@ -1,5 +1,5 @@
 ﻿{
-    "version":  "2.1.86",
+    "version":  "2.1.87",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
@@ -180,6 +180,41 @@
                                            "userAgent":  "desktop",
                                            "requiresAuth":  true
                                        }
+                       },
+                       {
+                           "id":  "luminaretranslations",
+                           "name":  "Luminare Translations",
+                           "version":  "0.1.0-cinder",
+                           "description":  "Search public Luminare light novels and build available chapters into EPUB on device. No debrid required.",
+                           "contentType":  "books",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/luminaretranslations.js",
+                           "minCinderVersion":  "1.1.0",
+                           "contentTypes":  [
+                                                "webnovel",
+                                                "ebook"
+                                            ],
+                           "contentSubtypes":  [
+                                                   "lightNovel",
+                                                   "webFiction",
+                                                   "translatedNovel"
+                                               ]
+                       },
+                       {
+                           "id":  "bronstl",
+                           "name":  "BronsTL",
+                           "version":  "0.1.0-cinder",
+                           "description":  "Search public BronsTL light novels and build available chapters into EPUB on device. No debrid required.",
+                           "contentType":  "books",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/bronstl.js",
+                           "minCinderVersion":  "1.1.0",
+                           "contentTypes":  [
+                                                "webnovel",
+                                                "ebook"
+                                            ],
+                           "contentSubtypes":  [
+                                                   "lightNovel",
+                                                   "translatedNovel"
+                                               ]
                        }
                    ]
 }

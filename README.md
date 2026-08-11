@@ -19,6 +19,8 @@ https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/repo.
 - **JNovels**: Searches JNovels light novel EPUB/PDF posts with on-device link resolution.
 - **Literotica**: Searches adult fiction from Literotica and builds stories into EPUB on device. Private, opt-in testing only.
 - **NovelUpdates**: Searches and discovers translated web novels, loads rich series metadata, and builds available translator chapters into EPUB. Use the extension website button for sessions that require login.
+- **Luminare Translations**: Searches public light novels, loads rich metadata and covers, and builds available text chapters with illustrations into EPUB.
+- **BronsTL**: Searches public light novels, loads metadata and covers, and builds available chapters with illustrations into EPUB.
 
 ## Disclaimer
 These extensions are for testing purposes only. Please respect copyright laws and the terms of service of the respective providers.
