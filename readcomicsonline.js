@@ -2,7 +2,7 @@ var ReadComicsOnline = {};
 
 ReadComicsOnline.id = "readcomicsonline";
 ReadComicsOnline.name = "ReadComicsOnline";
-ReadComicsOnline.version = "0.1.3-cinder";
+ReadComicsOnline.version = "0.2.0-cinder";
 ReadComicsOnline.icon = "RCO";
 ReadComicsOnline.description = "Read western comics from ReadComicsOnline.ru. No debrid required.";
 ReadComicsOnline.contentType = "comics";
@@ -22,11 +22,16 @@ ReadComicsOnline.browser = {
 };
 
 ReadComicsOnline.BASE_URL = "https://readcomicsonline.ru";
+ReadComicsOnline.ROOT_SITEMAP_URL = ReadComicsOnline.BASE_URL + "/sitemap.xml";
+ReadComicsOnline.COMICS_SITEMAP_URL = ReadComicsOnline.BASE_URL + "/sitemap-comics.xml";
 ReadComicsOnline.PAGE_SIZE = 24;
+ReadComicsOnline._comicIndexPromise = null;
+ReadComicsOnline._comicLookup = null;
+ReadComicsOnline._chapterSitemapsPromise = null;
 
 ReadComicsOnline._headers = function(extra) {
   var headers = {
-    "Accept": "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,application/json;q=0.8,*/*;q=0.7",
     "Accept-Language": "en-US,en;q=0.9",
     "Referer": this.BASE_URL + "/",
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
@@ -42,15 +47,13 @@ ReadComicsOnline._headers = function(extra) {
 ReadComicsOnline._browserHeaders = function(options) {
   options = options || {};
   var headers = this._headers(options.headers);
-  // Let the native WebView emit its real User-Agent. A Windows Chrome header
-  // paired with WKWebView/Android WebView prevents Cloudflare clearance.
+  // The native WebView must present its own internally consistent identity.
   delete headers["User-Agent"];
   headers["X-Cinder-Suppress-Interactive"] = "1";
   headers["X-Cinder-Browser-User-Agent"] = "desktop";
-  headers["X-Cinder-Wake-Page"] = "1";
   headers["X-Cinder-Visible-Layout"] = "1";
-  headers["X-Cinder-Min-Wait-Ms"] = String(options.minWaitMs || 2500);
-  headers["X-Cinder-Max-Wait-Ms"] = String(options.maxWaitMs || 30000);
+  headers["X-Cinder-Min-Wait-Ms"] = String(options.minWaitMs || 1200);
+  headers["X-Cinder-Max-Wait-Ms"] = String(options.maxWaitMs || 45000);
   if (options.waitForSelector) {
     headers["X-Cinder-Wait-For-Selector"] = options.waitForSelector;
   }
@@ -60,6 +63,7 @@ ReadComicsOnline._browserHeaders = function(options) {
 ReadComicsOnline._decode = function(value) {
   if (!value) return "";
   return String(value)
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
     .replace(/&amp;/g, "&")
     .replace(/&#38;/g, "&")
     .replace(/&quot;/g, '"')
@@ -76,13 +80,6 @@ ReadComicsOnline._decode = function(value) {
     })
     .replace(/\s+/g, " ")
     .trim();
-};
-
-ReadComicsOnline._stripTags = function(value) {
-  return this._decode(String(value || "")
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " "));
 };
 
 ReadComicsOnline._absUrl = function(value) {
@@ -119,38 +116,61 @@ ReadComicsOnline._seriesPath = function(value) {
 
 ReadComicsOnline._titleFromSlug = function(value) {
   var slug = this._slugFromId(value);
-  return this._decode(slug.replace(/-/g, " ")).replace(/\b\w/g, function(ch) {
+  return this._decode(slug.replace(/[-_]+/g, " ")).replace(/\b\w/g, function(ch) {
     return ch.toUpperCase();
   });
-};
-
-ReadComicsOnline._guessCover = function(seriesPath) {
-  var slug = this._slugFromId(seriesPath);
-  return slug ? this.BASE_URL + "/uploads/manga/" + slug + "/cover/cover_250x350.jpg" : "";
 };
 
 ReadComicsOnline._imageHeaders = function(referer) {
   return {
     "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
     "Referer": referer || this.BASE_URL + "/",
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
   };
 };
 
 ReadComicsOnline._isProtectionPage = function(value) {
   var text = String(value || "");
-  return /Just a moment|cf-chl-|challenge-platform|challenge-error-text|Attention Required|Enable JavaScript and cookies to continue|Checking your browser|security verification|verify you are human|turnstile|Cloudflare Ray ID/i.test(text);
+  return /Just a moment|Performing security verification|cf-chl-|challenge-platform|challenge-error-text|Attention Required|Enable JavaScript and cookies to continue|Checking your browser|security verification|verify you are human|turnstile|Cloudflare Ray ID/i.test(text);
+};
+
+ReadComicsOnline._matchesRequiredPattern = function(text, pattern) {
+  if (!pattern) return true;
+  pattern.lastIndex = 0;
+  return pattern.test(String(text || ""));
 };
 
 ReadComicsOnline._isUsableResponse = function(response, options) {
   if (!response || response.status < 200 || response.status >= 300 || !response.data) return false;
   var text = String(response.data || "");
-  if (!text || this._isProtectionPage(text)) return false;
-  if (options && options.requiredPattern) {
-    options.requiredPattern.lastIndex = 0;
-    if (!options.requiredPattern.test(text)) return false;
+  if (!text) return false;
+  var requiredPattern = options && options.requiredPattern;
+  // A successfully cleared Cloudflare page can retain challenge-platform
+  // references. Source-specific content is stronger evidence than that stale
+  // markup, so accept it before checking generic protection signatures.
+  if (requiredPattern && this._matchesRequiredPattern(text, requiredPattern)) return true;
+  if (this._isProtectionPage(text)) return false;
+  return !requiredPattern;
+};
+
+ReadComicsOnline._fetchPublicText = async function(url, requiredPattern) {
+  if (!cinder || typeof cinder.fetch !== "function") {
+    throw new Error("ReadComicsOnline requires Cinder network support.");
   }
-  return true;
+  var response = null;
+  try {
+    response = await cinder.fetch(url, {
+      headers: this._headers(),
+      timeout: 25000,
+    });
+  } catch (error) {
+    response = null;
+  }
+  var text = response && response.data ? String(response.data) : "";
+  if (!response || response.status < 200 || response.status >= 300 || !text || this._isProtectionPage(text) || !this._matchesRequiredPattern(text, requiredPattern)) {
+    var status = response && response.status ? " (HTTP " + response.status + ")" : "";
+    throw new Error("ReadComicsOnline public index request failed" + status + ": " + url);
+  }
+  return text;
 };
 
 ReadComicsOnline._fetchBrowser = async function(url, options) {
@@ -158,23 +178,28 @@ ReadComicsOnline._fetchBrowser = async function(url, options) {
   try {
     return await cinder.fetchBrowser(url, {
       headers: this._browserHeaders(options),
-      timeout: options.timeout || 30000,
+      timeout: 55000,
       browserUserAgent: "desktop",
     });
   } catch (error) {
-    if (cinder.warn) cinder.warn("ReadComicsOnline browser fallback failed for " + url);
+    if (cinder.warn) cinder.warn("ReadComicsOnline background browser failed for " + url);
     return null;
   }
 };
 
-ReadComicsOnline._fetchText = async function(url, options) {
-  options = options || {};
+ReadComicsOnline._fetchReaderHtml = async function(url) {
+  var options = {
+    requiredPattern: /id=["']reader-all["']/i,
+    waitForSelector: "#reader-all img",
+    minWaitMs: 1200,
+    maxWaitMs: 45000,
+  };
   var response = null;
-  if (!options.browserOnly && cinder && typeof cinder.fetch === "function") {
+  if (cinder && typeof cinder.fetch === "function") {
     try {
       response = await cinder.fetch(url, {
-        headers: this._headers(options.headers),
-        timeout: options.timeout || 25000,
+        headers: this._headers(),
+        timeout: 12000,
       });
     } catch (error) {
       response = null;
@@ -184,114 +209,124 @@ ReadComicsOnline._fetchText = async function(url, options) {
     response = await this._fetchBrowser(url, options);
   }
   if (!this._isUsableResponse(response, options)) {
+    if (response && this._isProtectionPage(response.data)) {
+      throw new Error("ReadComicsOnline security verification did not complete in the background.");
+    }
     var status = response && response.status ? " (HTTP " + response.status + ")" : "";
-    throw new Error("ReadComicsOnline request failed" + status + ": " + url);
+    throw new Error("ReadComicsOnline reader request failed" + status + ": " + url);
   }
   return String(response.data || "");
 };
 
-ReadComicsOnline._parseJson = function(value) {
-  var text = String(value || "").replace(/^\uFEFF/, "").trim();
-  if (/^</.test(text) && cinder && typeof cinder.parseHTML === "function") {
-    var doc = cinder.parseHTML(text);
-    var pre = doc.querySelector("pre");
-    if (pre) text = pre.text();
+ReadComicsOnline._parseComicSitemap = function(xml) {
+  var source = String(xml || "");
+  var results = [];
+  var lookup = Object.create(null);
+  var blockPattern = /<url>([\s\S]*?)<\/url>/gi;
+  var match;
+  while ((match = blockPattern.exec(source)) !== null) {
+    var block = match[1];
+    var locationMatch = block.match(/<loc>\s*([^<]+?)\s*<\/loc>/i);
+    if (!locationMatch) continue;
+    var path = this._seriesPath(this._decode(locationMatch[1]));
+    var slug = this._slugFromId(path);
+    if (!slug || lookup[slug]) continue;
+    var coverMatch = block.match(/<image:loc>\s*([^<]+?)\s*<\/image:loc>/i);
+    var titleMatch = block.match(/<image:caption>\s*([\s\S]*?)\s*<\/image:caption>/i);
+    var modifiedMatch = block.match(/<lastmod>\s*([^<]+?)\s*<\/lastmod>/i);
+    var modifiedAt = modifiedMatch ? Date.parse(this._decode(modifiedMatch[1])) : 0;
+    var item = {
+      id: path,
+      slug: slug,
+      title: this._decode(titleMatch && titleMatch[1]) || this._titleFromSlug(slug),
+      cover: this._decode(coverMatch && coverMatch[1]) || "",
+      modifiedAt: Number.isFinite(modifiedAt) ? modifiedAt : 0,
+      sourceIndex: results.length,
+    };
+    results.push(item);
+    lookup[slug] = item;
   }
-  var preMatch = text.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
-  if (preMatch) text = this._decode(preMatch[1]);
+  if (results.length === 0) {
+    throw new Error("ReadComicsOnline comic index did not contain any titles.");
+  }
+  this._comicLookup = lookup;
+  return results;
+};
+
+ReadComicsOnline._loadComicIndex = function() {
+  if (this._comicIndexPromise) return this._comicIndexPromise;
+  var self = this;
+  this._comicIndexPromise = (async function() {
+    var xml = await self._fetchPublicText(self.COMICS_SITEMAP_URL, /<urlset|<image:caption>/i);
+    return self._parseComicSitemap(xml);
+  })().catch(function(error) {
+    self._comicIndexPromise = null;
+    self._comicLookup = null;
+    throw error;
+  });
+  return this._comicIndexPromise;
+};
+
+ReadComicsOnline._toResult = function(item) {
+  var cover = item.cover || "";
+  return {
+    id: item.id,
+    title: item.title,
+    author: "Unknown",
+    cover: cover || undefined,
+    coverHeaders: cover ? this._imageHeaders(this.BASE_URL + item.id) : undefined,
+    url: this.BASE_URL + item.id,
+    format: "comics",
+    contentType: "comics",
+    contentTypes: ["comic"],
+  };
+};
+
+ReadComicsOnline._normalizeSearch = function(value) {
+  var text = String(value || "").toLowerCase();
   try {
-    return JSON.parse(text);
-  } catch (error) {
-    throw new Error("ReadComicsOnline returned invalid search data.");
-  }
+    text = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  } catch (error) {}
+  return text
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 };
 
-ReadComicsOnline._imageFromNode = function(node) {
-  if (!node) return "";
-  var srcset = node.attr("data-srcset") || node.attr("srcset") || "";
-  var srcsetFirst = srcset ? srcset.split(",")[0].trim().split(/\s+/)[0] : "";
-  return this._absUrl(
-    node.attr("data-background-image") ||
-    node.attr("data-cfsrc") ||
-    node.attr("data-lazy-src") ||
-    node.attr("data-src") ||
-    node.attr("data-original") ||
-    node.attr("src") ||
-    srcsetFirst
-  );
-};
-
-ReadComicsOnline._searchItems = function(payload, page) {
-  var suggestions = payload && Array.isArray(payload.suggestions) ? payload.suggestions : [];
-  var offset = Math.max(0, Number(page) || 0) * this.PAGE_SIZE;
-  var source = suggestions.slice(offset, offset + this.PAGE_SIZE);
-  var results = [];
-  var seen = {};
-  for (var i = 0; i < source.length; i++) {
-    var suggestion = source[i] || {};
-    var path = this._seriesPath(suggestion.data || suggestion.url || suggestion.value);
-    if (!path || seen[path]) continue;
-    seen[path] = true;
-    var cover = this._guessCover(path);
-    results.push({
-      id: path,
-      title: this._stripTags(suggestion.value) || this._titleFromSlug(path),
-      author: "Unknown",
-      cover: cover || undefined,
-      coverHeaders: cover ? this._imageHeaders(this.BASE_URL + path) : undefined,
-      url: this.BASE_URL + path,
-      format: "comics",
-      contentType: "comics",
-      contentTypes: ["comic"],
-    });
-  }
-  return results;
-};
-
-ReadComicsOnline._parseCards = function(html) {
-  var results = [];
-  var seen = {};
-  if (!cinder || typeof cinder.parseHTML !== "function") return results;
-  var doc = cinder.parseHTML(html);
-  var cards = doc.querySelectorAll("div.comic-list-layout .grid > .group");
-  if (cards.length === 0) cards = doc.querySelectorAll(".comic-list-layout .group");
-  for (var i = 0; i < cards.length; i++) {
-    var card = cards[i];
-    var anchor = card.querySelector("a.block.text-sm.font-semibold") || card.querySelector("a[href*='/comic/']");
-    if (!anchor) continue;
-    var path = this._pathFromUrl(anchor.attr("href") || "");
-    var parts = path.split("/").filter(Boolean);
-    if (parts.length !== 2 || String(parts[0]).toLowerCase() !== "comic" || seen[path]) continue;
-    seen[path] = true;
-    var image = card.querySelector("img");
-    var cover = this._imageFromNode(image) || this._guessCover(path);
-    var title = this._decode(anchor.text()) || this._decode(image && image.attr("alt")) || this._titleFromSlug(path);
-    results.push({
-      id: path,
-      title: title,
-      author: "Unknown",
-      cover: cover || undefined,
-      coverHeaders: cover ? this._imageHeaders(this.BASE_URL + path) : undefined,
-      url: this.BASE_URL + path,
-      format: "comics",
-      contentType: "comics",
-      contentTypes: ["comic"],
-    });
-  }
-  return results;
+ReadComicsOnline._searchScore = function(item, normalizedQuery) {
+  var title = this._normalizeSearch(item.title);
+  var slug = this._normalizeSearch(item.slug);
+  if (!normalizedQuery) return -1;
+  if (title === normalizedQuery) return 1000;
+  if (title.indexOf(normalizedQuery + " ") === 0) return 850;
+  if (title.indexOf(normalizedQuery) !== -1) return 700;
+  var words = normalizedQuery.split(" ").filter(Boolean);
+  var allTitleWords = words.every(function(word) { return title.indexOf(word) !== -1; });
+  if (allTitleWords) return 500;
+  var allSlugWords = words.every(function(word) { return slug.indexOf(word) !== -1; });
+  return allSlugWords ? 350 : -1;
 };
 
 ReadComicsOnline.search = async function(query, page) {
-  var value = String(query || "").trim();
-  if (!value) return [];
-  var url = this.BASE_URL + "/search?query=" + encodeURIComponent(value);
-  var text = await this._fetchText(url, {
-    requiredPattern: /suggestions|<pre/i,
-    waitForSelector: "pre",
-    minWaitMs: 2500,
-    maxWaitMs: 13000,
+  var normalizedQuery = this._normalizeSearch(query);
+  if (!normalizedQuery) return [];
+  var index = await this._loadComicIndex();
+  var self = this;
+  var matches = [];
+  for (var i = 0; i < index.length; i++) {
+    var score = self._searchScore(index[i], normalizedQuery);
+    if (score >= 0) matches.push({ item: index[i], score: score });
+  }
+  matches.sort(function(a, b) {
+    if (a.score !== b.score) return b.score - a.score;
+    if (a.item.modifiedAt !== b.item.modifiedAt) return b.item.modifiedAt - a.item.modifiedAt;
+    return a.item.title.localeCompare(b.item.title, undefined, { numeric: true, sensitivity: "base" });
   });
-  return this._searchItems(this._parseJson(text), page || 0);
+  var offset = Math.max(0, Number(page) || 0) * this.PAGE_SIZE;
+  return matches.slice(offset, offset + this.PAGE_SIZE).map(function(entry) {
+    return self._toResult(entry.item);
+  });
 };
 
 ReadComicsOnline.getDiscoverSections = async function() {
@@ -302,199 +337,166 @@ ReadComicsOnline.getDiscoverSections = async function() {
 };
 
 ReadComicsOnline.getDiscoverItems = async function(sectionId, page) {
-  var sort = sectionId === "latest" ? "latest" : "views";
-  var sitePage = Math.max(1, (Number(page) || 0) + 1);
-  var url = this.BASE_URL + "/comic-list?sort=" + sort + "&page=" + sitePage;
-  var html = await this._fetchText(url, {
-    requiredPattern: /comic-list-layout|href=["'][^"']*\/comic\//i,
-    waitForSelector: "div.comic-list-layout .grid > .group",
-    minWaitMs: 700,
-    maxWaitMs: 18000,
+  var index = await this._loadComicIndex();
+  var items = index.slice();
+  if (sectionId === "latest") {
+    items.sort(function(a, b) {
+      if (a.modifiedAt !== b.modifiedAt) return b.modifiedAt - a.modifiedAt;
+      return a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: "base" });
+    });
+  } else {
+    items.sort(function(a, b) { return a.sourceIndex - b.sourceIndex; });
+  }
+  var offset = Math.max(0, Number(page) || 0) * this.PAGE_SIZE;
+  var self = this;
+  return items.slice(offset, offset + this.PAGE_SIZE).map(function(item) {
+    return self._toResult(item);
   });
-  var results = this._parseCards(html);
-  if (results.length === 0) throw new Error("ReadComicsOnline returned no browse results.");
-  return results;
 };
 
-ReadComicsOnline._metadataFromRows = function(doc) {
-  var metadata = { author: "", genres: [], status: undefined };
-  var rows = doc.querySelectorAll("dl div");
-  for (var i = 0; i < rows.length; i++) {
-    var row = rows[i];
-    var text = this._decode(row.text());
-    var links = row.querySelectorAll("a");
-    var linkValues = [];
-    for (var j = 0; j < links.length; j++) {
-      var linkText = this._decode(links[j].text());
-      if (linkText) linkValues.push(linkText);
-    }
-    if (/\bAuthor\s*:/i.test(text)) {
-      metadata.author = linkValues.join(", ") || text.replace(/^.*?Author\s*:\s*/i, "").trim();
-    } else if (/\bGenres?\s*:/i.test(text) || /\bCategories\s*:/i.test(text)) {
-      metadata.genres = linkValues.length ? linkValues : text.replace(/^.*?(?:Genres?|Categories)\s*:\s*/i, "").split(",").map(function(value) {
-        return value.trim();
-      }).filter(Boolean);
-    } else if (/\bStatus\s*:/i.test(text)) {
-      var statusText = text.replace(/^.*?Status\s*:\s*/i, "").toLowerCase();
-      if (/complete|finished/.test(statusText)) metadata.status = "completed";
-      else if (/ongoing|active/.test(statusText)) metadata.status = "ongoing";
-      else if (/hiatus|paused/.test(statusText)) metadata.status = "hiatus";
-      else if (/drop|cancel/.test(statusText)) metadata.status = "cancelled";
-    }
-  }
-  if (!metadata.author) {
-    var authorRows = doc.querySelectorAll("div");
-    var bestAuthor = "";
-    var bestLength = Number.POSITIVE_INFINITY;
-    for (var authorIndex = 0; authorIndex < authorRows.length; authorIndex++) {
-      var authorRow = authorRows[authorIndex];
-      var authorText = this._decode(authorRow.text());
-      if (!/^Author\s*:/i.test(authorText)) continue;
-      var authorLinks = authorRow.querySelectorAll("a");
-      var authorValues = [];
-      for (var authorLinkIndex = 0; authorLinkIndex < authorLinks.length; authorLinkIndex++) {
-        var authorValue = this._decode(authorLinks[authorLinkIndex].text());
-        if (authorValue) authorValues.push(authorValue);
-      }
-      var candidate = authorValues.join(", ") || authorText.replace(/^Author\s*:\s*/i, "").trim();
-      if (candidate && authorText.length < bestLength) {
-        bestAuthor = candidate;
-        bestLength = authorText.length;
-      }
-    }
-    metadata.author = bestAuthor;
-  }
-  if (!metadata.status) {
-    var badges = doc.querySelectorAll("div.flex.flex-wrap.gap-2 span.rounded-full");
-    for (var k = 0; k < badges.length; k++) {
-      var badge = this._decode(badges[k].text()).toLowerCase();
-      if (/complete|finished/.test(badge)) metadata.status = "completed";
-      else if (/ongoing|active/.test(badge)) metadata.status = "ongoing";
-      else if (/hiatus|paused/.test(badge)) metadata.status = "hiatus";
-      else if (/drop|cancel/.test(badge)) metadata.status = "cancelled";
-      if (metadata.status) break;
-    }
-  }
-  return metadata;
+ReadComicsOnline._findComic = async function(id) {
+  await this._loadComicIndex();
+  var slug = this._slugFromId(id);
+  return (this._comicLookup && this._comicLookup[slug]) || null;
 };
 
 ReadComicsOnline.getMangaDetails = async function(id) {
   var path = this._seriesPath(id);
   if (!path) throw new Error("Invalid ReadComicsOnline comic id.");
-  var url = this.BASE_URL + path;
-  var html = await this._fetchText(url, {
-    requiredPattern: /text-2xl|overflow-hidden[^"']*border-ink-600/i,
-    waitForSelector: "h1.text-2xl",
-    minWaitMs: 700,
-    maxWaitMs: 18000,
-  });
-  if (!cinder || typeof cinder.parseHTML !== "function") {
-    throw new Error("ReadComicsOnline requires Cinder HTML parser support.");
-  }
-  var doc = cinder.parseHTML(html);
-  var titleNode = doc.querySelector("h1.text-2xl") || doc.querySelector("h1");
-  var image = doc.querySelector("img.w-full.rounded-xl") || doc.querySelector("main img");
-  var descriptionNode = doc.querySelector("p.mt-5.text-sm") || doc.querySelector(".summary p");
-  var metadata = this._metadataFromRows(doc);
-  var cover = this._imageFromNode(image) || this._guessCover(path);
+  var item = await this._findComic(path);
+  var cover = item && item.cover ? item.cover : "";
   return {
     id: path,
-    title: this._decode(titleNode && titleNode.text()) || this._titleFromSlug(path),
-    author: metadata.author || "Unknown",
+    title: item ? item.title : this._titleFromSlug(path),
+    author: "Unknown",
     cover: cover || undefined,
-    coverHeaders: cover ? this._imageHeaders(url) : undefined,
-    description: this._decode(descriptionNode && descriptionNode.text()) || undefined,
-    genres: metadata.genres,
-    status: metadata.status,
+    coverHeaders: cover ? this._imageHeaders(this.BASE_URL + path) : undefined,
     format: "comics",
     contentType: "comics",
   };
 };
 
-ReadComicsOnline._parseDate = function(value) {
-  var text = this._decode(value).replace(/\b([A-Za-z]{3})\./, "$1");
-  if (!text) return undefined;
-  var parsed = Date.parse(text);
-  return Number.isFinite(parsed) ? new Date(parsed).toISOString().split("T")[0] : undefined;
+ReadComicsOnline._loadChapterSitemaps = function() {
+  if (this._chapterSitemapsPromise) return this._chapterSitemapsPromise;
+  var self = this;
+  this._chapterSitemapsPromise = (async function() {
+    var root = await self._fetchPublicText(self.ROOT_SITEMAP_URL, /sitemap-chapters-/i);
+    var urls = [];
+    var seen = {};
+    var locationPattern = /<loc>\s*([^<]*sitemap-chapters-[^<]*\.xml)\s*<\/loc>/gi;
+    var match;
+    while ((match = locationPattern.exec(root)) !== null) {
+      var url = self._absUrl(match[1]);
+      if (url && !seen[url]) {
+        seen[url] = true;
+        urls.push(url);
+      }
+    }
+    if (urls.length === 0) {
+      urls = [
+        self.BASE_URL + "/sitemap-chapters-1.xml",
+        self.BASE_URL + "/sitemap-chapters-2.xml",
+      ];
+    }
+    return Promise.all(urls.map(function(url) {
+      return self._fetchPublicText(url, /<urlset|\/comic\//i);
+    }));
+  })().catch(function(error) {
+    self._chapterSitemapsPromise = null;
+    throw error;
+  });
+  return this._chapterSitemapsPromise;
 };
 
-ReadComicsOnline._cleanChapterTitle = function(seriesTitle, value, path) {
-  var title = this._decode(value);
-  if (seriesTitle && title.toLowerCase().indexOf(seriesTitle.toLowerCase()) === 0) {
-    title = title.slice(seriesTitle.length).trim();
-  }
-  title = title.replace(/^[:\s-]+/, "").replace(/^#\s*/, "").trim();
-  if (!title) {
-    var token = this._pathFromUrl(path).split("/").filter(Boolean).pop() || "";
-    try { token = decodeURIComponent(token); } catch (error) {}
-    title = token.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[-_]+/g, " ").trim();
-  }
-  if (/^\d+(?:\.\d+)?(?:\s|$)/.test(title)) return "Issue #" + title;
-  return title || "Issue";
+ReadComicsOnline._escapeRegExp = function(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 };
 
-ReadComicsOnline._numberFromChapter = function(title, path) {
-  var source = String(title || "");
-  var match = source.match(/(?:Issue\s*)?#\s*(\d+(?:\.\d+)?)/i) || source.match(/^Issue\s+(\d+(?:\.\d+)?)/i);
-  if (match) return Number(match[1]);
-  var token = this._pathFromUrl(path).split("/").filter(Boolean).pop() || "";
-  if (/^\d+(?:\.\d+)?$/.test(token)) return Number(token);
-  var year = source.match(/\b(19|20)\d{2}\b/) || token.match(/(19|20)\d{2}/);
-  return year ? Number(year[0]) : 0;
+ReadComicsOnline._chapterTitle = function(token) {
+  var value = String(token || "");
+  try { value = decodeURIComponent(value); } catch (error) {}
+  value = this._decode(value).replace(/^\/+|\/+$/g, "");
+  if (/^\d+(?:\.\d+)?$/i.test(value)) return "Issue #" + value;
+  var annual = value.match(/^annual[-_ ]*(.*)$/i);
+  if (annual) return "Annual" + (annual[1] ? " " + annual[1].replace(/[-_]+/g, " ") : "");
+  if (/^(?:gn|graphic[-_ ]*novel)$/i.test(value)) return "Graphic Novel";
+  if (/^tpb(?:[-_ ]|$)/i.test(value)) {
+    return value.replace(/^tpb/i, "TPB").replace(/[-_]+/g, " ");
+  }
+  return value.replace(/[-_]+/g, " ").replace(/\b\w/g, function(ch) {
+    return ch.toUpperCase();
+  }) || "Issue";
+};
+
+ReadComicsOnline._naturalCompare = function(left, right) {
+  return String(left || "").localeCompare(String(right || ""), undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
 };
 
 ReadComicsOnline.getChapters = async function(mangaId) {
   var path = this._seriesPath(mangaId);
   if (!path) return [];
-  var url = this.BASE_URL + path;
-  var html = await this._fetchText(url, {
-    requiredPattern: /overflow-hidden[^"']*border-ink-600|href=["'][^"']*\/comic\/[^"']+\/[^"']+/i,
-    waitForSelector: ".overflow-hidden.border-ink-600 > a",
-    minWaitMs: 700,
-    maxWaitMs: 18000,
-  });
-  if (!cinder || typeof cinder.parseHTML !== "function") {
-    throw new Error("ReadComicsOnline requires Cinder HTML parser support.");
-  }
-  var doc = cinder.parseHTML(html);
-  var titleNode = doc.querySelector("h1.text-2xl") || doc.querySelector("h1");
-  var seriesTitle = this._decode(titleNode && titleNode.text()) || this._titleFromSlug(path);
-  var nodes = doc.querySelectorAll(".overflow-hidden.border-ink-600 > a");
-  if (nodes.length === 0) nodes = doc.querySelectorAll("a[href*='/comic/']");
+  var slug = this._slugFromId(path);
+  var prefix = this.BASE_URL + "/comic/" + slug + "/";
+  var pattern = new RegExp("<loc>\\s*" + this._escapeRegExp(prefix) + "([^<]+)</loc>\\s*<lastmod>\\s*([^<]+)</lastmod>", "gi");
+  var sitemaps = await this._loadChapterSitemaps();
   var chapters = [];
   var seen = {};
-  for (var i = 0; i < nodes.length; i++) {
-    var node = nodes[i];
-    var chapterPath = this._pathFromUrl(node.attr("href") || "");
-    var parts = chapterPath.split("/").filter(Boolean);
-    if (parts.length !== 3 || String(parts[0]).toLowerCase() !== "comic" || parts[1].toLowerCase() !== this._slugFromId(path).toLowerCase() || seen[chapterPath]) continue;
-    seen[chapterPath] = true;
-    var nameNode = node.querySelector(".text-brand-400");
-    var dateNode = node.querySelector(".text-slate-500");
-    var rawTitle = this._decode(nameNode ? nameNode.text() : node.text());
-    var title = this._cleanChapterTitle(seriesTitle, rawTitle, chapterPath);
-    chapters.push({
-      id: chapterPath,
-      title: title,
-      chapterNumber: this._numberFromChapter(title, chapterPath),
-      dateUploaded: this._parseDate(dateNode && dateNode.text()),
-      _sourceIndex: i,
-    });
+  for (var i = 0; i < sitemaps.length; i++) {
+    var source = String(sitemaps[i] || "");
+    var match;
+    pattern.lastIndex = 0;
+    while ((match = pattern.exec(source)) !== null) {
+      var token = this._decode(match[1]).replace(/^\/+|\/+$/g, "");
+      if (!token) continue;
+      var chapterPath = path + "/" + token;
+      if (seen[chapterPath]) continue;
+      seen[chapterPath] = true;
+      var modifiedText = this._decode(match[2]);
+      var modifiedAt = Date.parse(modifiedText);
+      chapters.push({
+        id: chapterPath,
+        token: token,
+        title: this._chapterTitle(token),
+        modifiedAt: Number.isFinite(modifiedAt) ? modifiedAt : 0,
+        dateUploaded: Number.isFinite(modifiedAt) ? new Date(modifiedAt).toISOString().split("T")[0] : undefined,
+      });
+    }
   }
-  if (chapters.length === 0) throw new Error("ReadComicsOnline returned no issues for this comic.");
-  chapters.reverse();
-  var usedNumbers = {};
-  for (var j = 0; j < chapters.length; j++) {
-    var chapter = chapters[j];
-    var baseNumber = Number(chapter.chapterNumber);
-    if (!Number.isFinite(baseNumber) || baseNumber <= 0) baseNumber = j + 1;
-    var key = String(baseNumber);
-    var duplicateOffset = usedNumbers[key] || 0;
-    usedNumbers[key] = duplicateOffset + 1;
-    chapter.chapterNumber = baseNumber + duplicateOffset / 1000;
-    delete chapter._sourceIndex;
+  if (chapters.length === 0) {
+    throw new Error("ReadComicsOnline returned no indexed issues for this comic.");
   }
-  return chapters;
+  var self = this;
+  chapters.sort(function(a, b) {
+    if (a.modifiedAt && b.modifiedAt && a.modifiedAt !== b.modifiedAt) return a.modifiedAt - b.modifiedAt;
+    if (a.modifiedAt && !b.modifiedAt) return -1;
+    if (!a.modifiedAt && b.modifiedAt) return 1;
+    return self._naturalCompare(a.token, b.token);
+  });
+  return chapters.map(function(chapter, index) {
+    return {
+      id: chapter.id,
+      title: chapter.title,
+      chapterNumber: index + 1,
+      dateUploaded: chapter.dateUploaded,
+    };
+  });
+};
+
+ReadComicsOnline._imageFromNode = function(node) {
+  if (!node) return "";
+  var srcset = node.attr("data-srcset") || node.attr("srcset") || "";
+  var srcsetFirst = srcset ? srcset.split(",")[0].trim().split(/\s+/)[0] : "";
+  return this._absUrl(
+    node.attr("data-cfsrc") ||
+    node.attr("data-lazy-src") ||
+    node.attr("data-src") ||
+    node.attr("data-original") ||
+    node.attr("src") ||
+    srcsetFirst
+  );
 };
 
 ReadComicsOnline._isPageImage = function(url) {
@@ -511,7 +513,6 @@ ReadComicsOnline._parsePages = function(html, referer) {
   if (!cinder || typeof cinder.parseHTML !== "function") return pages;
   var doc = cinder.parseHTML(html);
   var images = doc.querySelectorAll("#reader-all img");
-  if (images.length === 0) images = doc.querySelectorAll("#all img.img-responsive, #all img");
   for (var i = 0; i < images.length; i++) {
     var src = this._imageFromNode(images[i]);
     if (!this._isPageImage(src) || seen[src]) continue;
@@ -528,40 +529,17 @@ ReadComicsOnline.getPages = async function(chapterId) {
     throw new Error("Invalid ReadComicsOnline issue id.");
   }
   var url = this.BASE_URL + path;
-  var html = await this._fetchText(url, {
-    requiredPattern: /id=["']reader-all["']|id=["']all["']/i,
-    waitForSelector: "#reader-all img",
-    minWaitMs: 900,
-    maxWaitMs: 20000,
-  });
+  var html = await this._fetchReaderHtml(url);
   var pages = this._parsePages(html, url);
-  if (pages.length === 0 && cinder && typeof cinder.fetchBrowser === "function") {
-    var rendered = await this._fetchText(url, {
-      browserOnly: true,
-      requiredPattern: /id=["']reader-all["']|id=["']all["']/i,
-      waitForSelector: "#reader-all img",
-      minWaitMs: 1200,
-      maxWaitMs: 22000,
-    });
-    pages = this._parsePages(rendered, url);
+  if (pages.length === 0) {
+    throw new Error("ReadComicsOnline returned no readable pages for this issue.");
   }
-  if (pages.length === 0) throw new Error("ReadComicsOnline returned no readable pages for this issue.");
   return pages;
 };
 
 ReadComicsOnline.testConnection = async function() {
-  var url = this.BASE_URL + "/search?query=batman";
-  var text = await this._fetchText(url, {
-    requiredPattern: /suggestions|<pre/i,
-    waitForSelector: "pre",
-    minWaitMs: 2500,
-    maxWaitMs: 13000,
-  });
-  var payload = this._parseJson(text);
-  if (!payload || !Array.isArray(payload.suggestions)) {
-    throw new Error("ReadComicsOnline did not return a usable search response.");
-  }
-  return true;
+  var index = await this._loadComicIndex();
+  return index.length > 0;
 };
 
 ReadComicsOnline.getSettings = function() {
