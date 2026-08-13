@@ -1,5 +1,5 @@
 ﻿{
-    "version":  "2.1.89",
+    "version":  "2.1.90",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
@@ -134,6 +134,26 @@
                                            "startUrl":  "https://www.novelupdates.com/",
                                            "userAgent":  "desktop",
                                            "requiresAuth":  true
+                                       }
+                       },
+                       {
+                           "id":  "readcomicsonline",
+                           "name":  "ReadComicsOnline",
+                           "version":  "0.1.0-cinder",
+                           "description":  "Read western comics from ReadComicsOnline.ru. No debrid required.",
+                           "contentType":  "comics",
+                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/readcomicsonline.js",
+                           "minCinderVersion":  "2.0.0",
+                           "contentTypes":  [
+                                                "comic"
+                                            ],
+                           "contentSubtypes":  [
+                                                   "westernComic"
+                                               ],
+                           "browser":  {
+                                           "startUrl":  "https://readcomicsonline.ru/",
+                                           "userAgent":  "desktop",
+                                           "requiresAuth":  false
                                        }
                        }
                    ]
