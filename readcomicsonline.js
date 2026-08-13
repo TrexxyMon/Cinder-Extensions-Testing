@@ -2,7 +2,7 @@ var ReadComicsOnline = {};
 
 ReadComicsOnline.id = "readcomicsonline";
 ReadComicsOnline.name = "ReadComicsOnline";
-ReadComicsOnline.version = "0.1.1-cinder";
+ReadComicsOnline.version = "0.1.2-cinder";
 ReadComicsOnline.icon = "RCO";
 ReadComicsOnline.description = "Read western comics from ReadComicsOnline.ru. No debrid required.";
 ReadComicsOnline.contentType = "comics";
@@ -42,7 +42,7 @@ ReadComicsOnline._headers = function(extra) {
 ReadComicsOnline._browserHeaders = function(options) {
   options = options || {};
   var headers = this._headers(options.headers);
-  headers["X-Cinder-Suppress-Interactive"] = "1";
+  headers["X-Cinder-Interactive-After-Ms"] = "2500";
   headers["X-Cinder-Browser-User-Agent"] = "desktop";
   headers["X-Cinder-Wake-Page"] = "1";
   headers["X-Cinder-Visible-Layout"] = "1";
@@ -286,7 +286,7 @@ ReadComicsOnline.search = async function(query, page) {
     requiredPattern: /suggestions|<pre/i,
     waitForSelector: "pre",
     minWaitMs: 2500,
-    maxWaitMs: 12000,
+    maxWaitMs: 26000,
   });
   return this._searchItems(this._parseJson(text), page || 0);
 };
@@ -552,7 +552,7 @@ ReadComicsOnline.testConnection = async function() {
     requiredPattern: /suggestions|<pre/i,
     waitForSelector: "pre",
     minWaitMs: 2500,
-    maxWaitMs: 12000,
+    maxWaitMs: 26000,
   });
   var payload = this._parseJson(text);
   if (!payload || !Array.isArray(payload.suggestions)) {
