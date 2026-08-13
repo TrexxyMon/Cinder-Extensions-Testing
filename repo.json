@@ -1,5 +1,5 @@
 ﻿{
-    "version":  "2.1.88",
+    "version":  "2.1.89",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
@@ -68,36 +68,6 @@
                                                ]
                        },
                        {
-                           "id":  "literotica",
-                           "name":  "Literotica",
-                           "version":  "0.1.1-cinder",
-                           "description":  "Search adult fiction from Literotica and build stories into EPUB on device. No debrid required.",
-                           "contentType":  "books",
-                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/literotica.js",
-                           "minCinderVersion":  "2.0.0",
-                           "contentTypes":  [
-                                                "webnovel",
-                                                "ebook"
-                                            ],
-                           "contentSubtypes":  [
-                                                   "webFiction",
-                                                   "adultFiction"
-                                               ],
-                           "isAdult":  true
-                       },
-                       {
-                           "id":  "freemagazines",
-                           "name":  "FreeMagazines.top",
-                           "version":  "1.1.8-cinder",
-                           "description":  "Browse and search PDF magazines from FreeMagazines.top with on-device resolution.",
-                           "contentType":  "magazine",
-                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/freemagazines.js",
-                           "minCinderVersion":  "2.0.0",
-                           "contentTypes":  [
-                                                "magazine"
-                                            ]
-                       },
-                       {
                            "id":  "gocomics",
                            "name":  "GoComics",
                            "version":  "1.2.4-cinderfix",
@@ -119,21 +89,6 @@
                            "description":  "Read western comics from ComicHubFree.",
                            "contentType":  "comics",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/comichubfree.js",
-                           "minCinderVersion":  "2.0.0",
-                           "contentTypes":  [
-                                                "comic"
-                                            ],
-                           "contentSubtypes":  [
-                                                   "westernComic"
-                                               ]
-                       },
-                       {
-                           "id":  "readallcomics",
-                           "name":  "ReadAllComics",
-                           "version":  "0.1.2-cinder",
-                           "description":  "Read western comics from ReadAllComics.",
-                           "contentType":  "comics",
-                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/readallcomics.js",
                            "minCinderVersion":  "2.0.0",
                            "contentTypes":  [
                                                 "comic"
