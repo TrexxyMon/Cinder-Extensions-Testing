@@ -1,5 +1,5 @@
 ﻿{
-    "version":  "2.1.90",
+    "version":  "2.1.91",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
@@ -139,7 +139,7 @@
                        {
                            "id":  "readcomicsonline",
                            "name":  "ReadComicsOnline",
-                           "version":  "0.1.0-cinder",
+                           "version":  "0.1.1-cinder",
                            "description":  "Read western comics from ReadComicsOnline.ru. No debrid required.",
                            "contentType":  "comics",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/readcomicsonline.js",

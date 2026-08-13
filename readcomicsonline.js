@@ -2,7 +2,7 @@ var ReadComicsOnline = {};
 
 ReadComicsOnline.id = "readcomicsonline";
 ReadComicsOnline.name = "ReadComicsOnline";
-ReadComicsOnline.version = "0.1.0-cinder";
+ReadComicsOnline.version = "0.1.1-cinder";
 ReadComicsOnline.icon = "RCO";
 ReadComicsOnline.description = "Read western comics from ReadComicsOnline.ru. No debrid required.";
 ReadComicsOnline.contentType = "comics";
@@ -43,8 +43,11 @@ ReadComicsOnline._browserHeaders = function(options) {
   options = options || {};
   var headers = this._headers(options.headers);
   headers["X-Cinder-Suppress-Interactive"] = "1";
-  headers["X-Cinder-Min-Wait-Ms"] = String(options.minWaitMs || 900);
-  headers["X-Cinder-Max-Wait-Ms"] = String(options.maxWaitMs || 18000);
+  headers["X-Cinder-Browser-User-Agent"] = "desktop";
+  headers["X-Cinder-Wake-Page"] = "1";
+  headers["X-Cinder-Visible-Layout"] = "1";
+  headers["X-Cinder-Min-Wait-Ms"] = String(options.minWaitMs || 2500);
+  headers["X-Cinder-Max-Wait-Ms"] = String(options.maxWaitMs || 30000);
   if (options.waitForSelector) {
     headers["X-Cinder-Wait-For-Selector"] = options.waitForSelector;
   }
@@ -133,7 +136,7 @@ ReadComicsOnline._imageHeaders = function(referer) {
 
 ReadComicsOnline._isProtectionPage = function(value) {
   var text = String(value || "");
-  return /Just a moment|cf-chl-|challenge-platform|Attention Required|Enable JavaScript and cookies to continue|Cloudflare Ray ID/i.test(text);
+  return /Just a moment|cf-chl-|challenge-platform|challenge-error-text|Attention Required|Enable JavaScript and cookies to continue|Checking your browser|security verification|verify you are human|turnstile|Cloudflare Ray ID/i.test(text);
 };
 
 ReadComicsOnline._isUsableResponse = function(response, options) {
@@ -153,6 +156,7 @@ ReadComicsOnline._fetchBrowser = async function(url, options) {
     return await cinder.fetchBrowser(url, {
       headers: this._browserHeaders(options),
       timeout: options.timeout || 30000,
+      browserUserAgent: "desktop",
     });
   } catch (error) {
     if (cinder.warn) cinder.warn("ReadComicsOnline browser fallback failed for " + url);
@@ -280,9 +284,9 @@ ReadComicsOnline.search = async function(query, page) {
   var url = this.BASE_URL + "/search?query=" + encodeURIComponent(value);
   var text = await this._fetchText(url, {
     requiredPattern: /suggestions|<pre/i,
-    waitForSelector: "pre, body",
-    minWaitMs: 500,
-    maxWaitMs: 16000,
+    waitForSelector: "pre",
+    minWaitMs: 2500,
+    maxWaitMs: 12000,
   });
   return this._searchItems(this._parseJson(text), page || 0);
 };
@@ -546,9 +550,9 @@ ReadComicsOnline.testConnection = async function() {
   var url = this.BASE_URL + "/search?query=batman";
   var text = await this._fetchText(url, {
     requiredPattern: /suggestions|<pre/i,
-    waitForSelector: "pre, body",
-    minWaitMs: 500,
-    maxWaitMs: 16000,
+    waitForSelector: "pre",
+    minWaitMs: 2500,
+    maxWaitMs: 12000,
   });
   var payload = this._parseJson(text);
   if (!payload || !Array.isArray(payload.suggestions)) {
