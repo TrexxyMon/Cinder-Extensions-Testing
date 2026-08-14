@@ -2,7 +2,7 @@ var ReadComicsOnline = {};
 
 ReadComicsOnline.id = "readcomicsonline";
 ReadComicsOnline.name = "ReadComicsOnline";
-ReadComicsOnline.version = "0.2.0-cinder";
+ReadComicsOnline.version = "0.2.1-cinder";
 ReadComicsOnline.icon = "RCO";
 ReadComicsOnline.description = "Read western comics from ReadComicsOnline.ru. No debrid required.";
 ReadComicsOnline.contentType = "comics";
@@ -22,9 +22,15 @@ ReadComicsOnline.browser = {
 };
 
 ReadComicsOnline.BASE_URL = "https://readcomicsonline.ru";
+ReadComicsOnline.CDN_URL = "https://cdn.readcomicsonline.ru";
 ReadComicsOnline.ROOT_SITEMAP_URL = ReadComicsOnline.BASE_URL + "/sitemap.xml";
 ReadComicsOnline.COMICS_SITEMAP_URL = ReadComicsOnline.BASE_URL + "/sitemap-comics.xml";
+ReadComicsOnline.COMPACT_INDEX_URL = "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/readcomicsonline-index.json?v=0.2.1";
 ReadComicsOnline.PAGE_SIZE = 24;
+ReadComicsOnline._compactIndexPromise = null;
+ReadComicsOnline._compactLookup = null;
+ReadComicsOnline._compactLatestRows = null;
+ReadComicsOnline._comicSitemapPromise = null;
 ReadComicsOnline._comicIndexPromise = null;
 ReadComicsOnline._comicLookup = null;
 ReadComicsOnline._chapterSitemapsPromise = null;
@@ -225,24 +231,10 @@ ReadComicsOnline._parseComicSitemap = function(xml) {
   var blockPattern = /<url>([\s\S]*?)<\/url>/gi;
   var match;
   while ((match = blockPattern.exec(source)) !== null) {
-    var block = match[1];
-    var locationMatch = block.match(/<loc>\s*([^<]+?)\s*<\/loc>/i);
-    if (!locationMatch) continue;
-    var path = this._seriesPath(this._decode(locationMatch[1]));
-    var slug = this._slugFromId(path);
+    var item = this._parseComicBlock(match[1], results.length);
+    if (!item) continue;
+    var slug = item.slug;
     if (!slug || lookup[slug]) continue;
-    var coverMatch = block.match(/<image:loc>\s*([^<]+?)\s*<\/image:loc>/i);
-    var titleMatch = block.match(/<image:caption>\s*([\s\S]*?)\s*<\/image:caption>/i);
-    var modifiedMatch = block.match(/<lastmod>\s*([^<]+?)\s*<\/lastmod>/i);
-    var modifiedAt = modifiedMatch ? Date.parse(this._decode(modifiedMatch[1])) : 0;
-    var item = {
-      id: path,
-      slug: slug,
-      title: this._decode(titleMatch && titleMatch[1]) || this._titleFromSlug(slug),
-      cover: this._decode(coverMatch && coverMatch[1]) || "",
-      modifiedAt: Number.isFinite(modifiedAt) ? modifiedAt : 0,
-      sourceIndex: results.length,
-    };
     results.push(item);
     lookup[slug] = item;
   }
@@ -253,11 +245,94 @@ ReadComicsOnline._parseComicSitemap = function(xml) {
   return results;
 };
 
+ReadComicsOnline._parseComicBlock = function(block, sourceIndex) {
+  var source = String(block || "");
+  var locationMatch = source.match(/<loc>\s*([^<]+?)\s*<\/loc>/i);
+  if (!locationMatch) return null;
+  var location = this._decode(locationMatch[1]);
+  var pathMatch = location.match(/\/comic\/([^/?#<]+)/i);
+  if (!pathMatch || !pathMatch[1]) return null;
+  var slug = this._decode(pathMatch[1]).replace(/^\/+|\/+$/g, "");
+  if (!slug) return null;
+  var coverMatch = source.match(/<image:loc>\s*([^<]+?)\s*<\/image:loc>/i);
+  var titleMatch = source.match(/<image:caption>\s*([\s\S]*?)\s*<\/image:caption>/i);
+  var modifiedMatch = source.match(/<lastmod>\s*([^<]+?)\s*<\/lastmod>/i);
+  var modifiedAt = modifiedMatch ? Date.parse(modifiedMatch[1]) : 0;
+  return {
+    id: "/comic/" + slug,
+    slug: slug,
+    title: this._decode(titleMatch && titleMatch[1]) || this._titleFromSlug(slug),
+    cover: this._decode(coverMatch && coverMatch[1]) || "",
+    modifiedAt: Number.isFinite(modifiedAt) ? modifiedAt : 0,
+    sourceIndex: Number(sourceIndex) || 0,
+  };
+};
+
+ReadComicsOnline._loadComicSitemap = function() {
+  if (this._comicSitemapPromise) return this._comicSitemapPromise;
+  var self = this;
+  this._comicSitemapPromise = self
+    ._fetchPublicText(self.COMICS_SITEMAP_URL, /<urlset|<image:caption>/i)
+    .catch(function(error) {
+      self._comicSitemapPromise = null;
+      throw error;
+    });
+  return this._comicSitemapPromise;
+};
+
+ReadComicsOnline._compactRowToItem = function(row, sourceIndex) {
+  if (!Array.isArray(row) || !row[0]) return null;
+  var slug = String(row[0]);
+  var modifiedText = String(row[2] || "");
+  var modifiedAt = modifiedText ? Date.parse(modifiedText) : 0;
+  return {
+    id: "/comic/" + slug,
+    slug: slug,
+    title: String(row[1] || "") || this._titleFromSlug(slug),
+    cover: this.CDN_URL + "/uploads/manga/" + slug + "/cover/cover_250x350.jpg",
+    modifiedAt: Number.isFinite(modifiedAt) ? modifiedAt : 0,
+    sourceIndex: Number(sourceIndex) || 0,
+  };
+};
+
+ReadComicsOnline._loadCompactIndex = function() {
+  if (this._compactIndexPromise) return this._compactIndexPromise;
+  var self = this;
+  this._compactIndexPromise = (async function() {
+    if (!cinder || typeof cinder.fetch !== "function") {
+      throw new Error("ReadComicsOnline requires Cinder network support.");
+    }
+    var response = await cinder.fetch(self.COMPACT_INDEX_URL, {
+      headers: { "Accept": "application/json,text/plain,*/*" },
+      timeout: 12000,
+    });
+    if (!response || response.status < 200 || response.status >= 300 || !response.data) {
+      throw new Error("ReadComicsOnline compact index is unavailable.");
+    }
+    var payload = JSON.parse(String(response.data));
+    var rows = payload && Array.isArray(payload.items) ? payload.items : [];
+    if (rows.length === 0) {
+      throw new Error("ReadComicsOnline compact index is empty.");
+    }
+    var lookup = Object.create(null);
+    for (var i = 0; i < rows.length; i++) {
+      if (Array.isArray(rows[i]) && rows[i][0]) lookup[String(rows[i][0])] = rows[i];
+    }
+    self._compactLookup = lookup;
+    return rows;
+  })().catch(function(error) {
+    self._compactIndexPromise = null;
+    self._compactLookup = null;
+    throw error;
+  });
+  return this._compactIndexPromise;
+};
+
 ReadComicsOnline._loadComicIndex = function() {
   if (this._comicIndexPromise) return this._comicIndexPromise;
   var self = this;
   this._comicIndexPromise = (async function() {
-    var xml = await self._fetchPublicText(self.COMICS_SITEMAP_URL, /<urlset|<image:caption>/i);
+    var xml = await self._loadComicSitemap();
     return self._parseComicSitemap(xml);
   })().catch(function(error) {
     self._comicIndexPromise = null;
@@ -311,12 +386,48 @@ ReadComicsOnline._searchScore = function(item, normalizedQuery) {
 ReadComicsOnline.search = async function(query, page) {
   var normalizedQuery = this._normalizeSearch(query);
   if (!normalizedQuery) return [];
-  var index = await this._loadComicIndex();
   var self = this;
   var matches = [];
-  for (var i = 0; i < index.length; i++) {
-    var score = self._searchScore(index[i], normalizedQuery);
-    if (score >= 0) matches.push({ item: index[i], score: score });
+  var queryWords = normalizedQuery.split(" ").filter(Boolean);
+  var compactRows = null;
+  try {
+    compactRows = await this._loadCompactIndex();
+  } catch (error) {
+    compactRows = null;
+  }
+  if (compactRows) {
+    for (var i = 0; i < compactRows.length; i++) {
+      var row = compactRows[i];
+      if (!Array.isArray(row) || !row[0]) continue;
+      var quickText = (String(row[1] || "") + " " + String(row[0]))
+        .toLowerCase()
+        .replace(/[-_]+/g, " ");
+      if (!queryWords.every(function(word) { return quickText.indexOf(word) !== -1; })) continue;
+      var compactItem = this._compactRowToItem(row, i);
+      if (!compactItem) continue;
+      var compactScore = self._searchScore(compactItem, normalizedQuery);
+      if (compactScore >= 0) matches.push({ item: compactItem, score: compactScore });
+    }
+  } else {
+    var source = await this._loadComicSitemap();
+    var tokens = normalizedQuery.split(" ").filter(Boolean);
+    var needle = tokens.reduce(function(longest, token) {
+      return token.length > longest.length ? token : longest;
+    }, "");
+    if (!needle) return [];
+    var occurrencePattern = new RegExp(this._escapeRegExp(needle), "gi");
+    var seenBlocks = Object.create(null);
+    var occurrence;
+    while ((occurrence = occurrencePattern.exec(source)) !== null) {
+      var blockStart = source.lastIndexOf("<url>", occurrence.index);
+      var blockEnd = source.indexOf("</url>", occurrence.index);
+      if (blockStart < 0 || blockEnd < 0 || seenBlocks[blockStart]) continue;
+      seenBlocks[blockStart] = true;
+      var item = self._parseComicBlock(source.slice(blockStart + 5, blockEnd), blockStart);
+      if (!item) continue;
+      var score = self._searchScore(item, normalizedQuery);
+      if (score >= 0) matches.push({ item: item, score: score });
+    }
   }
   matches.sort(function(a, b) {
     if (a.score !== b.score) return b.score - a.score;
@@ -337,27 +448,60 @@ ReadComicsOnline.getDiscoverSections = async function() {
 };
 
 ReadComicsOnline.getDiscoverItems = async function(sectionId, page) {
-  var index = await this._loadComicIndex();
-  var items = index.slice();
-  if (sectionId === "latest") {
-    items.sort(function(a, b) {
-      if (a.modifiedAt !== b.modifiedAt) return b.modifiedAt - a.modifiedAt;
-      return a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: "base" });
-    });
-  } else {
-    items.sort(function(a, b) { return a.sourceIndex - b.sourceIndex; });
-  }
-  var offset = Math.max(0, Number(page) || 0) * this.PAGE_SIZE;
   var self = this;
+  var offset = Math.max(0, Number(page) || 0) * this.PAGE_SIZE;
+  try {
+    var rows = await this._loadCompactIndex();
+    var orderedRows = rows;
+    if (sectionId === "latest") {
+      if (!this._compactLatestRows) {
+        this._compactLatestRows = rows.slice().sort(function(a, b) {
+          var dateCompare = String(b && b[2] || "").localeCompare(String(a && a[2] || ""));
+          if (dateCompare !== 0) return dateCompare;
+          return String(a && a[1] || "").localeCompare(String(b && b[1] || ""), undefined, { numeric: true, sensitivity: "base" });
+        });
+      }
+      orderedRows = this._compactLatestRows;
+    }
+    return orderedRows.slice(offset, offset + this.PAGE_SIZE).map(function(row, index) {
+      return self._toResult(self._compactRowToItem(row, offset + index));
+    });
+  } catch (error) {
+    // Older or temporarily unavailable repositories can still use the live sitemap.
+  }
+  var items = (await this._loadComicIndex()).slice();
+  items.sort(sectionId === "latest" ? function(a, b) {
+    if (a.modifiedAt !== b.modifiedAt) return b.modifiedAt - a.modifiedAt;
+    return a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: "base" });
+  } : function(a, b) { return a.sourceIndex - b.sourceIndex; });
   return items.slice(offset, offset + this.PAGE_SIZE).map(function(item) {
     return self._toResult(item);
   });
 };
 
 ReadComicsOnline._findComic = async function(id) {
-  await this._loadComicIndex();
   var slug = this._slugFromId(id);
-  return (this._comicLookup && this._comicLookup[slug]) || null;
+  if (!slug) return null;
+  try {
+    await this._loadCompactIndex();
+    var compactRow = this._compactLookup && this._compactLookup[slug];
+    if (compactRow) return this._compactRowToItem(compactRow, 0);
+  } catch (error) {}
+  if (this._comicLookup && this._comicLookup[slug]) return this._comicLookup[slug];
+  var source = await this._loadComicSitemap();
+  var lowerSource = source.toLowerCase();
+  var needle = "/comic/" + slug.toLowerCase();
+  var position = lowerSource.indexOf(needle);
+  while (position >= 0) {
+    var blockStart = source.lastIndexOf("<url>", position);
+    var blockEnd = source.indexOf("</url>", position);
+    if (blockStart >= 0 && blockEnd >= 0) {
+      var item = this._parseComicBlock(source.slice(blockStart + 5, blockEnd), blockStart);
+      if (item && item.slug === slug) return item;
+    }
+    position = lowerSource.indexOf(needle, position + needle.length);
+  }
+  return null;
 };
 
 ReadComicsOnline.getMangaDetails = async function(id) {
@@ -538,8 +682,13 @@ ReadComicsOnline.getPages = async function(chapterId) {
 };
 
 ReadComicsOnline.testConnection = async function() {
-  var index = await this._loadComicIndex();
-  return index.length > 0;
+  try {
+    var compactRows = await this._loadCompactIndex();
+    return compactRows.length > 0;
+  } catch (error) {
+    var index = await this._loadComicIndex();
+    return index.length > 0;
+  }
 };
 
 ReadComicsOnline.getSettings = function() {
