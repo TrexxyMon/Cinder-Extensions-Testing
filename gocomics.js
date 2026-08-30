@@ -2,7 +2,7 @@ var GoComics = {};
 
 GoComics.id = "gocomics";
 GoComics.name = "GoComics";
-GoComics.version = "1.2.4-cinderfix";
+GoComics.version = "1.2.5-cinderfix";
 GoComics.icon = "GC";
 GoComics.description =
   "Read daily comic strips from GoComics.com - patched for Cinder.";
@@ -264,11 +264,14 @@ GoComics._headers = async function() {
 };
 
 GoComics._comicToResult = function(c) {
+  var description = "Daily comic strip.";
   return {
     id: c.id,
     title: c.title,
     url: this.BASE_URL + "/" + c.id,
-    format: "manga"
+    format: "manga",
+    description: description,
+    extra: { description: description }
   };
 };
 
@@ -685,6 +688,9 @@ GoComics.getSettings = function() {
       }
   ];
 };
+
+// Older Cinder builds request getBookDetails() on detail screens.
+GoComics.getBookDetails = GoComics.getMangaDetails;
 
 __cinderExport = GoComics;
 

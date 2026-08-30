@@ -2,7 +2,7 @@ var MangaFire = {};
 
 MangaFire.id = "mangafire";
 MangaFire.name = "MangaFire";
-MangaFire.version = "0.1.4-cinder";
+MangaFire.version = "0.1.5-cinder";
 MangaFire.icon = "MF";
 MangaFire.description = "Read manga, manhwa, and manhua from MangaFire. No debrid required.";
 MangaFire.contentType = "manga";
@@ -685,5 +685,8 @@ MangaFire.getPages = async function(chapterId) {
 MangaFire.getSettings = function() {
   return [];
 };
+
+// Older Cinder builds request getBookDetails() on detail screens.
+MangaFire.getBookDetails = MangaFire.getMangaDetails;
 
 __cinderExport = MangaFire;

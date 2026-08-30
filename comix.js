@@ -2,7 +2,7 @@
 
 Comix.id = "comix";
 Comix.name = "Comix";
-Comix.version = "1.0.6-cinder";
+Comix.version = "1.0.7-cinder";
 Comix.icon = "CX";
 Comix.description = "Read manga, manhwa, and manhua from Comix.";
 Comix.contentType = "manga";
@@ -188,6 +188,7 @@ Comix._poster = function(manga) {
 
 Comix._toSearchResult = function(manga) {
   var hid = manga.hid || String(manga.id || "");
+  var description = this._decode(manga.synopsisHtml || manga.synopsis || "");
   return {
     id: hid,
     title: manga.title || hid,
@@ -196,10 +197,12 @@ Comix._toSearchResult = function(manga) {
     url: this._titleUrl(hid),
     source: this.name,
     format: manga.type || "manga",
+    description: description || undefined,
     extra: {
       latestChapter: manga.latestChapter,
       status: manga.status,
       type: manga.type,
+      description: description || undefined,
     },
   };
 };
@@ -254,9 +257,13 @@ Comix.search = async function(query, page) {
       title: details.title,
       author: details.author || details.artist || "",
       cover: details.cover,
+      description: details.description,
       url: this._titleUrl(details.id),
       source: this.name,
       format: "manga",
+      extra: {
+        description: details.description,
+      },
     }];
   }
 
@@ -427,6 +434,9 @@ Comix.getSettings = function() {
     },
   ];
 };
+
+// Older Cinder builds request getBookDetails() on detail screens.
+Comix.getBookDetails = Comix.getMangaDetails;
 
 __cinderExport = Comix;
 

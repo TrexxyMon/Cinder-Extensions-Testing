@@ -2,7 +2,7 @@ var JNovelsSource = {};
 
 JNovelsSource.id = "jnovels";
 JNovelsSource.name = "JNovels";
-JNovelsSource.version = "0.1.2-cinder";
+JNovelsSource.version = "0.1.3-cinder";
 JNovelsSource.icon = "JN";
 JNovelsSource.description = "Search JNovels light novel EPUB/PDF posts with on-device link resolution.";
 JNovelsSource.contentType = "books";
@@ -220,10 +220,12 @@ JNovelsSource._resultFromArticle = function(article) {
         source: "JNovels",
         size: "",
         datePublished: dateMatch && dateMatch[1] ? dateMatch[1] : undefined,
+        description: summary || undefined,
         extra: {
             articleUrl: url,
             downloadUrl: downloadUrl || undefined,
             preferredFormat: format,
+            description: summary || undefined,
             summary: summary || undefined,
         },
     };

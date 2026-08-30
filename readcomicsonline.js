@@ -2,7 +2,7 @@ var ReadComicsOnline = {};
 
 ReadComicsOnline.id = "readcomicsonline";
 ReadComicsOnline.name = "ReadComicsOnline";
-ReadComicsOnline.version = "0.2.1-cinder";
+ReadComicsOnline.version = "0.2.2-cinder";
 ReadComicsOnline.icon = "RCO";
 ReadComicsOnline.description = "Read western comics from ReadComicsOnline.ru. No debrid required.";
 ReadComicsOnline.contentType = "comics";
@@ -694,5 +694,8 @@ ReadComicsOnline.testConnection = async function() {
 ReadComicsOnline.getSettings = function() {
   return [];
 };
+
+// Older Cinder builds request getBookDetails() on detail screens.
+ReadComicsOnline.getBookDetails = ReadComicsOnline.getMangaDetails;
 
 __cinderExport = ReadComicsOnline;

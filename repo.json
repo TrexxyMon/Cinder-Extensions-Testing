@@ -1,12 +1,12 @@
 ﻿{
-    "version":  "2.1.95",
+    "version":  "2.1.96",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
                        {
                            "id":  "bbato",
                            "name":  "BBato",
-                           "version":  "1.0.3-cinder",
+                           "version":  "1.0.4-cinder",
                            "description":  "Read manga, manhwa, and manhua from BBato.",
                            "contentType":  "manga",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/bbato.js",
@@ -23,7 +23,7 @@
                        {
                            "id":  "comix",
                            "name":  "Comix",
-                           "version":  "1.0.6-cinder",
+                           "version":  "1.0.7-cinder",
                            "description":  "Read manga, manhwa, and manhua from Comix.",
                            "contentType":  "manga",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/comix.js",
@@ -53,7 +53,7 @@
                        {
                            "id":  "jnovels",
                            "name":  "JNovels",
-                           "version":  "0.1.2-cinder",
+                           "version":  "0.1.3-cinder",
                            "description":  "Search JNovels light novel EPUB/PDF posts with on-device link resolution.",
                            "contentType":  "books",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/jnovels.js",
@@ -70,7 +70,7 @@
                        {
                            "id":  "gocomics",
                            "name":  "GoComics",
-                           "version":  "1.2.4-cinderfix",
+                           "version":  "1.2.5-cinderfix",
                            "description":  "Read daily comic strips from GoComics.com. Patched for Cinder settings, actual strip traversal for chapter discovery, browser fallback page fetches, and lighter image URLs.",
                            "contentType":  "comics",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/gocomics.js",
@@ -85,7 +85,7 @@
                        {
                            "id":  "comichubfree",
                            "name":  "ComicHubFree",
-                           "version":  "0.1.1-cinder",
+                           "version":  "0.1.3-cinder",
                            "description":  "Read western comics from ComicHubFree.",
                            "contentType":  "comics",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/comichubfree.js",
@@ -100,7 +100,7 @@
                        {
                            "id":  "mangafire",
                            "name":  "MangaFire",
-                           "version":  "0.1.4-cinder",
+                           "version":  "0.1.5-cinder",
                            "description":  "Read manga, manhwa, and manhua from MangaFire. No debrid required.",
                            "contentType":  "manga",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/mangafire.js",
@@ -139,7 +139,7 @@
                        {
                            "id":  "readcomicsonline",
                            "name":  "ReadComicsOnline",
-                           "version":  "0.2.1-cinder",
+                           "version":  "0.2.2-cinder",
                            "description":  "Read western comics from ReadComicsOnline.ru. No debrid required.",
                            "contentType":  "comics",
                            "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/readcomicsonline.js",
