@@ -14,7 +14,7 @@ https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/repo.
 
 ## Available Extensions
 - **Z-Library (Direct)**: Scrapes Z-Library mirrors with IP rotation and Cloudflare bypass.
-- **Mayberry**: Searches and downloads EPUB books from the federated Mayberry library network, with New Releases, New Arrivals, and Top Reads discovery shelves.
+- **Mayberry**: Searches and downloads EPUB books from the federated Mayberry library network, with covers, synopsis, language, subjects, ISBN/identifier, catalog update date, and New Releases, New Arrivals, and Top Reads discovery shelves.
 - **JNovels**: Searches JNovels light novel EPUB/PDF posts with on-device link resolution.
 - **NovelUpdates**: Searches and discovers translated web novels, loads rich series metadata, and builds available translator chapters into EPUB. Use the extension website button for sessions that require login.
 - **ReadComicsOnline**: Searches, browses, and reads western comics from ReadComicsOnline.ru with direct requests and browser fallback.

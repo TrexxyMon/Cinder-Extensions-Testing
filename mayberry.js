@@ -2,7 +2,7 @@ var MayberrySource = {};
 
 MayberrySource.id = "mayberry";
 MayberrySource.name = "Mayberry";
-MayberrySource.version = "0.1.0-cinder";
+MayberrySource.version = "0.1.1-cinder";
 MayberrySource.icon = "MB";
 MayberrySource.description = "Search and download EPUB books from the federated Mayberry library network.";
 MayberrySource.contentType = "books";
@@ -20,7 +20,10 @@ MayberrySource.capabilities = {
 
 MayberrySource.BASE_URL = "https://mayberry.pub";
 MayberrySource._feedCache = {};
+MayberrySource._feedCacheOrder = [];
 MayberrySource._pendingFeeds = {};
+MayberrySource._detailsById = {};
+MayberrySource._detailsOrder = [];
 MayberrySource._sections = {
 	releases: "/opds/releases",
 	new: "/opds/new",
@@ -61,8 +64,29 @@ MayberrySource._text = function(element) {
 
 MayberrySource._headers = function() {
 	return {
-		Accept: "application/atom+xml;profile=opds-catalog, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.1",
+		Accept: "application/opds+json, application/atom+xml;profile=opds-catalog;q=0.9, application/json;q=0.8, application/xml;q=0.7, */*;q=0.1",
 	};
+};
+
+MayberrySource._parseFeedPayload = function(data, url) {
+	var value = String(data || "").trim();
+	if (value.charAt(0) === "{") {
+		var json = JSON.parse(value);
+		if (json && typeof json === "object" && json.metadata) {
+			return { json: json, url: url };
+		}
+	}
+	return { doc: cinder.parseXML(value), url: url };
+};
+
+MayberrySource._rememberFeed = function(url, data) {
+	if (!Object.prototype.hasOwnProperty.call(this._feedCache, url)) {
+		this._feedCacheOrder.push(url);
+	}
+	this._feedCache[url] = { data: data, savedAt: Date.now() };
+	while (this._feedCacheOrder.length > 48) {
+		delete this._feedCache[this._feedCacheOrder.shift()];
+	}
 };
 
 MayberrySource._fetchFeed = async function(pathOrUrl, maxAgeMs) {
@@ -70,7 +94,7 @@ MayberrySource._fetchFeed = async function(pathOrUrl, maxAgeMs) {
 	var now = Date.now();
 	var cached = this._feedCache[url];
 	if (cached && now - cached.savedAt <= Math.max(0, Number(maxAgeMs) || 0)) {
-		return { doc: cinder.parseXML(cached.data), url: url };
+		return this._parseFeedPayload(cached.data, url);
 	}
 
 	if (!this._pendingFeeds[url]) {
@@ -85,7 +109,11 @@ MayberrySource._fetchFeed = async function(pathOrUrl, maxAgeMs) {
 					});
 					var status = Number(response && response.status) || 0;
 					var data = String((response && response.data) || "");
-					if (status === 200 && /<(?:[A-Za-z0-9_-]+:)?feed(?:\s|>)/i.test(data)) {
+					var isOpdsJson =
+						/^\s*\{/.test(data) &&
+						/"metadata"\s*:/i.test(data) &&
+						/(?:"publications"|"navigation"|"groups"|"links")\s*:/i.test(data);
+					if (status === 200 && (isOpdsJson || /<(?:[A-Za-z0-9_-]+:)?feed(?:\s|>)/i.test(data))) {
 						return data;
 					}
 					if (status === 200 && /<html|<!doctype/i.test(data)) {
@@ -108,11 +136,186 @@ MayberrySource._fetchFeed = async function(pathOrUrl, maxAgeMs) {
 
 	try {
 		var data = await this._pendingFeeds[url];
-		this._feedCache[url] = { data: data, savedAt: Date.now() };
-		return { doc: cinder.parseXML(data), url: url };
+		this._rememberFeed(url, data);
+		return this._parseFeedPayload(data, url);
 	} finally {
 		delete this._pendingFeeds[url];
 	}
+};
+
+MayberrySource._jsonText = function(value) {
+	if (value == null) return "";
+	if (typeof value === "string" || typeof value === "number") return this._cleanText(value);
+	if (Array.isArray(value)) {
+		var parts = [];
+		for (var i = 0; i < value.length; i++) {
+			var part = this._jsonText(value[i]);
+			if (part) parts.push(part);
+		}
+		return parts.join(", ");
+	}
+	if (typeof value === "object") {
+		return this._jsonText(value.name || value.value || value.title || "");
+	}
+	return "";
+};
+
+MayberrySource._jsonList = function(value) {
+	var source = Array.isArray(value) ? value : value == null ? [] : [value];
+	var results = [];
+	var seen = {};
+	for (var i = 0; i < source.length; i++) {
+		var item = this._jsonText(source[i]).replace(/^"+|"+$/g, "").trim();
+		var key = item.toLowerCase();
+		if (item && !seen[key]) {
+			seen[key] = true;
+			results.push(item);
+		}
+	}
+	return results;
+};
+
+MayberrySource._languageLabel = function(value) {
+	var codes = this._jsonList(value);
+	var labels = {
+		en: "English",
+		es: "Spanish",
+		fr: "French",
+		de: "German",
+		it: "Italian",
+		pt: "Portuguese",
+		ja: "Japanese",
+		ko: "Korean",
+		zh: "Chinese",
+		ru: "Russian",
+		ar: "Arabic",
+		nl: "Dutch",
+		pl: "Polish",
+		tr: "Turkish",
+	};
+	return codes.map(function(code) {
+		var normalized = code.toLowerCase().split(/[-_]/)[0];
+		return labels[normalized] || code;
+	}).join(", ");
+};
+
+MayberrySource._displayIdentifier = function(identifier) {
+	var value = this._jsonText(identifier);
+	if (!value) return "";
+	var isbn = value.match(/^urn:isbn:(.+)$/i);
+	if (isbn) return "ISBN " + isbn[1];
+	var mayberryId = value.match(/^urn:mayberry:(?:book:)?(.+)$/i);
+	if (mayberryId) return "Mayberry ID " + mayberryId[1];
+	return value;
+};
+
+MayberrySource._identifierValue = function(identifier) {
+	var value = this._jsonText(identifier);
+	return value.replace(/^urn:(?:isbn|mayberry:(?:book:)?)[:]?/i, "");
+};
+
+MayberrySource._formatFromLink = function(link) {
+	var type = String((link && link.type) || "").toLowerCase();
+	var href = String((link && link.href) || "").toLowerCase();
+	if (type.indexOf("epub") >= 0 || /\.epub(?:$|[?#])/.test(href)) return "epub";
+	if (type.indexOf("pdf") >= 0 || /\.pdf(?:$|[?#])/.test(href)) return "pdf";
+	if (type.indexOf("audio") >= 0 || /\.m4b(?:$|[?#])/.test(href)) return "m4b";
+	return "epub";
+};
+
+MayberrySource._sizeFromLink = function(link) {
+	if (!link || typeof link !== "object") return undefined;
+	var properties = link.properties && typeof link.properties === "object" ? link.properties : {};
+	var candidates = [link.length, link.size, properties.numberOfBytes, properties.size, properties.fileSize];
+	for (var i = 0; i < candidates.length; i++) {
+		var value = Number(candidates[i]);
+		if (isFinite(value) && value > 0) return String(Math.round(value));
+	}
+	return undefined;
+};
+
+MayberrySource._rememberDetails = function(result) {
+	if (!result || !result.id) return;
+	var key = String(result.id);
+	if (!Object.prototype.hasOwnProperty.call(this._detailsById, key)) {
+		this._detailsOrder.push(key);
+	}
+	this._detailsById[key] = {
+		id: key,
+		title: result.title,
+		author: result.author,
+		cover: result.cover,
+		coverHighResolution: result.coverHighResolution || result.cover,
+		description: result.description,
+		genres: result.genres || (result.extra && result.extra.genres) || [],
+		language: result.language || (result.extra && result.extra.language),
+		isbn: result.isbn || (result.extra && result.extra.isbn),
+	};
+	while (this._detailsOrder.length > 200) {
+		delete this._detailsById[this._detailsOrder.shift()];
+	}
+};
+
+MayberrySource._parseJsonPublication = function(publication, feedUrl) {
+	var metadata = publication && publication.metadata && typeof publication.metadata === "object" ? publication.metadata : {};
+	var title = this._jsonText(metadata.title);
+	if (!title) return null;
+	var links = Array.isArray(publication.links) ? publication.links : [];
+	var acquisition = null;
+	for (var i = 0; i < links.length; i++) {
+		var rel = this._jsonText(links[i] && links[i].rel).toLowerCase();
+		var type = this._jsonText(links[i] && links[i].type).toLowerCase();
+		if (rel.indexOf("acquisition") >= 0 || type.indexOf("epub") >= 0 || type.indexOf("audio") >= 0) {
+			acquisition = links[i];
+			break;
+		}
+	}
+	if (!acquisition || !acquisition.href) return null;
+
+	var images = Array.isArray(publication.images) ? publication.images : [];
+	var cover = images.length ? this._absoluteUrl(images[0].href, feedUrl) : "";
+	var identifier = this._jsonText(metadata.identifier);
+	var identifierValue = this._identifierValue(identifier);
+	var displayIdentifier = this._displayIdentifier(identifier);
+	var genres = this._jsonList(metadata.subject).slice(0, 12);
+	var language = this._languageLabel(metadata.language);
+	var modified = this._jsonText(metadata.modified);
+	var description = this._jsonText(metadata.description);
+	var downloadUrl = this._absoluteUrl(acquisition.href, feedUrl);
+	var format = this._formatFromLink(acquisition);
+	var isIsbn = /^urn:isbn:/i.test(identifier);
+	var result = {
+		id: identifier || downloadUrl,
+		title: title,
+		author: this._jsonText(metadata.author) || "Unknown",
+		cover: cover || undefined,
+		coverHighResolution: cover || undefined,
+		url: downloadUrl,
+		format: format,
+		size: this._sizeFromLink(acquisition),
+		source: "Mayberry",
+		description: description || undefined,
+		language: language || undefined,
+		genres: genres,
+		isbn: isIsbn ? identifierValue : undefined,
+		modifiedAt: modified || undefined,
+		extra: {
+			description: description || undefined,
+			summary: description || undefined,
+			categories: genres,
+			genres: genres,
+			language: language || undefined,
+			identifier: identifierValue || undefined,
+			displayIdentifier: displayIdentifier || undefined,
+			isbn: isIsbn ? identifierValue : undefined,
+			modified: modified || undefined,
+			modifiedLabel: modified ? "Catalog updated " + modified.slice(0, 10) : undefined,
+			mediaType: this._jsonText(metadata["@type"]) || undefined,
+			downloadUrl: downloadUrl,
+		},
+	};
+	this._rememberDetails(result);
+	return result;
 };
 
 MayberrySource._entryAuthor = function(entry) {
@@ -153,6 +356,7 @@ MayberrySource._parseEntry = function(entry, feedUrl) {
 	var id = this._text(entry.querySelector("id"));
 	var summary = this._text(entry.querySelector("summary"));
 	if (!summary) summary = this._text(entry.querySelector("content"));
+	var modified = this._text(entry.querySelector("updated"));
 	var links = entry.querySelectorAll("link");
 	var cover = "";
 	var thumbnail = "";
@@ -181,26 +385,52 @@ MayberrySource._parseEntry = function(entry, feedUrl) {
 	var absoluteDownloadUrl = this._absoluteUrl(downloadUrl, feedUrl);
 	var categories = this._entryCategories(entry);
 	var author = this._entryAuthor(entry);
-	return {
+	var identifierValue = this._identifierValue(id);
+	var isIsbn = /^urn:isbn:/i.test(id);
+	var result = {
 		id: id || absoluteDownloadUrl,
 		title: title,
 		author: author,
 		cover: this._absoluteUrl(cover || thumbnail, feedUrl) || undefined,
+		coverHighResolution: this._absoluteUrl(cover || thumbnail, feedUrl) || undefined,
 		url: absoluteDownloadUrl,
 		format: "epub",
 		source: "Mayberry",
 		description: summary || undefined,
+		genres: categories,
+		isbn: isIsbn ? identifierValue : undefined,
+		modifiedAt: modified || undefined,
 		extra: {
 			description: summary || undefined,
 			summary: summary || undefined,
 			categories: categories,
 			genres: categories,
+			identifier: identifierValue || undefined,
+			displayIdentifier: this._displayIdentifier(id) || undefined,
+			isbn: isIsbn ? identifierValue : undefined,
+			modified: modified || undefined,
+			modifiedLabel: modified ? "Catalog updated " + modified.slice(0, 10) : undefined,
 			downloadUrl: absoluteDownloadUrl,
 		},
 	};
+	this._rememberDetails(result);
+	return result;
 };
 
 MayberrySource._parseBooks = function(feed) {
+	if (feed.json && Array.isArray(feed.json.publications)) {
+		var jsonResults = [];
+		var jsonSeen = {};
+		for (var publicationIndex = 0; publicationIndex < feed.json.publications.length; publicationIndex++) {
+			var jsonResult = this._parseJsonPublication(feed.json.publications[publicationIndex], feed.url);
+			if (!jsonResult) continue;
+			var jsonKey = String(jsonResult.id || jsonResult.url || (jsonResult.title + "|" + jsonResult.author)).toLowerCase();
+			if (jsonSeen[jsonKey]) continue;
+			jsonSeen[jsonKey] = true;
+			jsonResults.push(jsonResult);
+		}
+		return jsonResults;
+	}
 	var entries = feed.doc.querySelectorAll("entry");
 	var results = [];
 	var seen = {};
@@ -248,11 +478,28 @@ MayberrySource.getDiscoverItems = async function(sectionId, page) {
 
 MayberrySource.testConnection = async function() {
 	var feed = await this._fetchFeed("/opds", 300000);
-	var title = this._text(feed.doc.querySelector("feed > title")) || this._text(feed.doc.querySelector("title"));
+	var title = feed.json
+		? this._jsonText(feed.json.metadata && feed.json.metadata.title)
+		: this._text(feed.doc.querySelector("feed > title")) || this._text(feed.doc.querySelector("title"));
 	if (!title || title.toLowerCase().indexOf("mayberry") < 0) {
 		throw new Error("The server did not return the Mayberry OPDS catalog.");
 	}
 	return true;
+};
+
+MayberrySource.getBookDetails = async function(bookId) {
+	var key = String(bookId || "");
+	if (this._detailsById[key]) return this._detailsById[key];
+	var searchTerm = this._identifierValue(key);
+	if (searchTerm) {
+		var results = await this.search(searchTerm, 0);
+		for (var i = 0; i < results.length; i++) {
+			if (String(results[i].id) === key || String(results[i].isbn || "") === searchTerm) {
+				return this._detailsById[String(results[i].id)];
+			}
+		}
+	}
+	throw new Error("Mayberry no longer lists metadata for this title.");
 };
 
 MayberrySource.getSettings = function() {
