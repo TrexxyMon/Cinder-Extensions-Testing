@@ -1,5 +1,5 @@
 ﻿{
-    "version":  "2.1.98",
+    "version":  "2.1.99",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
@@ -50,20 +50,7 @@
                                             ],
                            "excludeFromDefaultMetadataProviders":  true
                        },
-                       {
-                           "id":  "mayberry",
-                           "name":  "Mayberry",
-                           "version":  "0.1.1-cinder",
-                           "description":  "Search and download EPUB books from the federated Mayberry library network.",
-                           "language":  "Multilingual",
-                           "contentType":  "books",
-                           "scriptUrl":  "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/mayberry.js",
-                           "minCinderVersion":  "1.1.0",
-                           "contentTypes":  [
-                                                "ebook"
-                                            ],
-                           "excludeFromDefaultMetadataProviders":  true
-                       },
+
                        {
                            "id":  "jnovels",
                            "name":  "JNovels",
