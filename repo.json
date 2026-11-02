@@ -1,8 +1,28 @@
 ﻿{
-    "version":  "2.1.99",
+    "version":  "2.1.100",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
+                       {
+                           "id": "audiobookbay",
+                           "name": "AudioBookBay",
+                           "version": "0.1.0-cinder",
+                           "description": "Search audiobook releases and resolve their torrents through a connected debrid service.",
+                           "language": "Multilingual",
+                           "contentType": "audiobooks",
+                           "contentTypes": [
+                               "audiobook"
+                           ],
+                           "excludeFromDefaultMetadataProviders": true,
+                           "debridSupport": "required",
+                           "debridDescription": "Uses torrent magnets with a connected Cinder debrid service. Requires an audiobook-capable Cinder build for playback.",
+                           "browser": {
+                               "startUrl": "https://audiobookbay.lu/",
+                               "userAgent": "desktop"
+                           },
+                           "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/audiobookbay.js",
+                           "minCinderVersion": "1.2.4"
+                       },
                        {
                            "id":  "bbato",
                            "name":  "BBato",
