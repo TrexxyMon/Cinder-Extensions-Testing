@@ -4,7 +4,7 @@
 var AudioBookBaySource = {
   id: "audiobookbay",
   name: "AudioBookBay",
-  version: "0.1.0-cinder",
+  version: "0.1.1-cinder",
   icon: "headset-outline",
   description: "Search audiobook releases and resolve their torrents through a connected debrid service.",
   language: "Multilingual",
@@ -151,7 +151,19 @@ AudioBookBaySource._item = function (post, base, path) {
     size: size ? size[1] + " " + size[2].toUpperCase() : undefined,
     language: language ? language[1].trim() : undefined,
     contentType: "audiobooks", contentTypes: ["audiobook"], source: this.name,
+    availabilityLabel: "Seeders",
     extra: { releaseTitle: label, debridRequired: true } };
+  // Only explicit release-statistic cells count. Missing does not mean zero;
+  // comments, tracker lists, downloads and prose are not availability counts.
+  var stats = post.querySelectorAll(".postContent table tr");
+  for (var s = 0; s < stats.length; s++) {
+    var cells = stats[s].querySelectorAll("td");
+    if (cells.length !== 2 || !/^(?:seeders|seeds):?$/i.test(this._text(cells[0].text()))) continue;
+    var countText = this._text(cells[1].text());
+    if (!/^(?:\d+|\d{1,3}(?:,\d{3})+)$/.test(countText)) continue;
+    var count = Number(countText.replace(/,/g, ""));
+    if (count <= 9007199254740991) { result.availability = count; result.seeders = count; break; }
+  }
   var narrator = post.querySelector(".desc .narrator"), bitrate = post.querySelector(".desc .bitrate");
   if (narrator) result.extra.narrator = this._text(narrator.text());
   if (bitrate) result.extra.bitrate = this._text(bitrate.text());

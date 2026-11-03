@@ -73,6 +73,31 @@ test('pagination matches actual website links and escapes query characters', asy
   const { source, requests } = load(); await source.search('Jane & Austen', 2);
   assert.equal(requests[0].url, BASE + '/page/2/?s=Jane%20%26%20Austen');
 });
+
+test('explicit seed counts use the generic field and label with a legacy fallback', async () => {
+  for (const [input, expected] of [['24', 24], ['0', 0], ['1,024', 1024]]) {
+    const html = listHtml().replace('</p></div>', `</p><table><tr><td>Seeders:</td><td>${input}</td></tr></table></div>`);
+    const h = load({ fetch: async () => ({ status: 200, data: html }) });
+    const item = (await h.source.search('Book'))[0];
+    assert.equal(item.availability, expected); assert.equal(item.seeders, expected); assert.equal(item.availabilityLabel, 'Seeders');
+  }
+});
+
+test('published AudioBookBay update matches the executable version', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'repo.json'), 'utf8').replace(/^\uFEFF/, ''));
+  const source = load().source, entry = manifest.extensions.find(item => item.id === source.id);
+  assert.equal(entry.version, source.version);
+  assert.equal(entry.contentType, source.contentType);
+  assert.equal(entry.debridSupport, source.debridSupport);
+});
+test('missing seed counts, descriptions and invalid values never become a fabricated zero', async () => {
+  const missing = (await load().source.search('Book'))[0];
+  assert.equal(missing.availability, undefined); assert.equal(missing.seeders, undefined); assert.equal(missing.availabilityLabel, 'Seeders');
+  for (const value of ['unknown', '-2', '2.5', '1,2', '9007199254740992']) {
+    const html = listHtml().replace('</p></div>', `</p><p>Seeders: 999</p><table><tr><td>Downloads:</td><td>100</td></tr><tr><td>Seeders:</td><td>${value}</td></tr></table></div>`);
+    assert.equal((await load({ fetch: async () => ({ status: 200, data: html }) }).source.search('Book'))[0].availability, undefined);
+  }
+});
 test('source ordering is preserved, duplicates and advertisements are discarded', () => {
   const { source } = load();
   const html = `<div id="content">${listing('second', 'Z Title - Author')}${listing('first', 'A Title - Author')}${listing('second')}${listing('bad').replace('/abss/bad/', '/dload-now?ad=1')}</div>`;

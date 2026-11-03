@@ -1,12 +1,12 @@
 ﻿{
-    "version":  "2.1.100",
+    "version":  "2.1.102",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
                        {
                            "id": "audiobookbay",
                            "name": "AudioBookBay",
-                           "version": "0.1.0-cinder",
+                           "version": "0.1.1-cinder",
                            "description": "Search audiobook releases and resolve their torrents through a connected debrid service.",
                            "language": "Multilingual",
                            "contentType": "audiobooks",
@@ -21,6 +21,20 @@
                                "userAgent": "desktop"
                            },
                            "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/audiobookbay.js",
+                           "minCinderVersion": "1.2.4"
+                       },
+                       {
+                           "id": "knaben-audiobooks",
+                           "name": "Knaben Audiobooks",
+                           "version": "0.1.0-cinder",
+                           "description": "Search audiobook releases using Knaben and your connected debrid service.",
+                           "language": "Multilingual",
+                           "contentType": "audiobooks",
+                           "contentTypes": ["audiobook"],
+                           "excludeFromDefaultMetadataProviders": true,
+                           "debridSupport": "required",
+                           "debridDescription": "Uses validated magnets with a connected Cinder debrid service. Requires an audiobook-capable Cinder build for playback.",
+                           "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/knaben-audiobooks.js",
                            "minCinderVersion": "1.2.4"
                        },
                        {

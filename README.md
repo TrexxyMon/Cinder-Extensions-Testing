@@ -14,6 +14,7 @@ https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/repo.
 
 ## Available Extensions
 - **AudioBookBay**: On-device audiobook search, release details and torrent magnets through your connected debrid provider. Requires an audiobook-capable Cinder build. See [setup and validation](docs/audiobookbay.md).
+- **Knaben Audiobooks**: Audiobook-only search and optional discovery shelves using the official API, published seed counts, and magnet handoff to your connected debrid provider. See [setup and validation](docs/knaben-audiobooks.md).
 - **Z-Library (Direct)**: Scrapes Z-Library mirrors with IP rotation and Cloudflare bypass.
 - **JNovels**: Searches JNovels light novel EPUB/PDF posts with on-device link resolution.
 - **NovelUpdates**: Searches and discovers translated web novels, loads rich series metadata, and builds available translator chapters into EPUB. Use the extension website button for sessions that require login.

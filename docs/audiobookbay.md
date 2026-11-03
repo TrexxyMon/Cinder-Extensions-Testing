@@ -3,6 +3,7 @@
 Private testing extension for audiobook-capable Cinder builds. Search, details, browsing and torrent resolution run on the device. There is no scraping server or additional API key.
 
 - Search returns the site's release order and pagination, with its title, author, cover, audio format, size and language when available.
+- Version 0.1.1 adds `availabilityLabel: "Seeders"`, with generic `availability` and legacy `seeders` counts when the page contains an explicit Seeds/Seeders statistic. Live search/detail pages inspected on 2026-11-03 did not publish those counts, so they remain unknown rather than a fabricated zero. No per-result tracker or third-party requests were added.
 - Details add the site's synopsis and narrator when available. Metadata is the release's own data and may be inaccurate; actual debrid files determine the downloaded audio tracks.
 - Latest Audiobooks, Fiction, Fantasy, Mystery and Science Fiction are optional Discover shelves. Nothing is added automatically.
 - Downloads require a connected debrid provider that supports torrents. The extension returns a magnet from the release's validated info hash and trackers. Cinder owns the provider selection, file selection, download/import and playback.
