@@ -1,8 +1,24 @@
 ﻿{
-    "version":  "2.1.102",
+    "version":  "2.1.103",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
+                       {
+                           "id": "thepiratebay-audiobooks",
+                           "name": "The Pirate Bay Audiobooks",
+                           "version": "0.1.0-cinder",
+                           "description": "Find audiobook releases and download them through your connected debrid service.",
+                           "language": "Multilingual",
+                           "contentType": "audiobooks",
+                           "contentTypes": [
+                               "audiobook"
+                           ],
+                           "excludeFromDefaultMetadataProviders": true,
+                           "debridSupport": "required",
+                           "debridDescription": "Audiobook magnets are handled by your connected Cinder debrid service.",
+                           "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/thepiratebay-audiobooks.js",
+                           "minCinderVersion": "1.2.4"
+                       },
                        {
                            "id": "audiobookbay",
                            "name": "AudioBookBay",

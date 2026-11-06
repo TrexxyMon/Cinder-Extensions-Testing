@@ -13,6 +13,7 @@ https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/repo.
 [TrexxyMon/Cinder-Extensions-Testing](https://github.com/TrexxyMon/Cinder-Extensions-Testing)
 
 ## Available Extensions
+- **The Pirate Bay Audiobooks**: Audiobook-only search, release sizes and seeders, with magnet downloads through your connected debrid provider. See [setup and validation](docs/thepiratebay-audiobooks.md).
 - **AudioBookBay**: On-device audiobook search, release details and torrent magnets through your connected debrid provider. Requires an audiobook-capable Cinder build. See [setup and validation](docs/audiobookbay.md).
 - **Knaben Audiobooks**: Audiobook-only search and optional discovery shelves using the official API, published seed counts, and magnet handoff to your connected debrid provider. See [setup and validation](docs/knaben-audiobooks.md).
 - **Z-Library (Direct)**: Scrapes Z-Library mirrors with IP rotation and Cloudflare bypass.
