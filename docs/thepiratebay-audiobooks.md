@@ -1,6 +1,6 @@
 # The Pirate Bay Audiobooks
 
-Private Cinder extension `thepiratebay-audiobooks`, version `0.1.0-cinder`.
+Private Cinder extension `thepiratebay-audiobooks`, version `0.1.1-cinder`.
 
 - Appears in the Audiobooks category and Search Downloads. Ebook results and other audio categories are excluded.
 - Uses the website's public JSON search service directly on the device. No account, supporter key, scraper backend or browser window is required.
@@ -8,7 +8,7 @@ Private Cinder extension `thepiratebay-audiobooks`, version `0.1.0-cinder`.
 - Shows release title, available size/format/date and a **Seeders** count. Older apps can read the legacy count field as well. Zero-count results are retained because a debrid provider may already have them cached.
 - Does not invent authors, covers or descriptions that the API does not provide. The audiobook selected in Cinder keeps its existing metadata; the debrid file selection/importer handles tracks and archives.
 - Search has a 12-second network timeout, one-minute bounded cache and in-flight deduplication. Rate limits are surfaced with a cooldown, rather than silently returning an empty list or retrying indefinitely.
-- The API returns up to 100 matches per request; later pages are empty rather than repeating results. Narrow the query if a release is missing. Cinder's download-result limit and ordering preferences still apply.
+- The API returns up to 100 matches per request; later pages are empty rather than repeating results. Narrow the query if a release is missing. The default display limit is 50, Cinder's maximum. Version 0.1.0 requested an unsupported 100-result display limit, which made Cinder fall back to five. Cinder's explicit download-result limit and ordering preferences still apply.
 
 Requires an audiobook-capable Cinder build (manifest minimum `1.2.4`). Uses the existing `cinder.fetch`, search and resolve contracts; no app or native-module changes are needed.
 

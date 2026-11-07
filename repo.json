@@ -1,12 +1,12 @@
 ﻿{
-    "version":  "2.1.104",
+    "version":  "2.1.105",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
                        {
                            "id": "thepiratebay-audiobooks",
                            "name": "The Pirate Bay Audiobooks",
-                           "version": "0.1.0-cinder",
+                           "version": "0.1.1-cinder",
                            "description": "Find audiobook releases and download them through your connected debrid service.",
                            "language": "Multilingual",
                            "contentType": "audiobooks",

@@ -3,7 +3,7 @@
 var PirateBayAudiobooks = {
   id: "thepiratebay-audiobooks",
   name: "The Pirate Bay Audiobooks",
-  version: "0.1.0-cinder",
+  version: "0.1.1-cinder",
   icon: "headset-outline",
   description: "Find audiobook releases and download them through your connected debrid service.",
   language: "Multilingual",
@@ -12,7 +12,7 @@ var PirateBayAudiobooks = {
   excludeFromDefaultMetadataProviders: true,
   debridSupport: "required",
   capabilities: { search: true, searchDownloads: true, resolve: true, discover: false, download: false, manga: false },
-  downloadResults: { order: "popularity", limit: 100 },
+  downloadResults: { order: "popularity", limit: 50 },
   _cache: [], _pending: {}, _cooldownUntil: 0
 };
 

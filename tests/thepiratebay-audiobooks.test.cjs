@@ -16,6 +16,16 @@ function load(fetcher = async () => ({ status: 200, data: JSON.stringify([releas
   vm.runInContext(code, context);
   return { source: context.__cinderExport, calls, advance: ms => { now += ms; } };
 }
+
+test('manifest update agrees with executable metadata and a supported result policy', () => {
+  const {source} = load();
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'repo.json'), 'utf8').replace(/^\uFEFF/, ''));
+  const entry = manifest.extensions.find(row => row.id === source.id);
+  assert.ok(entry);
+  for (const key of ['version', 'name', 'contentType', 'debridSupport']) assert.equal(entry[key], source[key]);
+  assert.ok(Number.isInteger(source.downloadResults.limit) && source.downloadResults.limit >= 1 && source.downloadResults.limit <= 50);
+  assert.equal(source.downloadResults.order, 'popularity');
+});
 test('declares audiobook-only category, debrid requirement, and legacy availability', async () => {
   const { source, calls } = load(); const results = await source.search('Example & Author', 0);
   assert.equal(source.contentType, 'audiobooks'); assert.equal(source.contentTypes[0], 'audiobook');
