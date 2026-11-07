@@ -29,7 +29,7 @@ function listing(slug = 'synthetic-audio', title = 'Synthetic Audio - Example Au
   <p>Posted: 1 Nov 2026<br>Format: <span>M4B</span> / Bitrate: <span>64 Kbps</span><br>File Size: <span>211.73</span> MBs</p></div>
   <div class="postMeta"><a href="/dload-now?ll=ad">Direct Download</a></div></div>`;
 }
-function listHtml() { return `<div id="content">${listing()}${listing('second-audio', 'Second &amp; Third - Another Author')}</div>`; }
+function listHtml() { return `<div id="content"><h1 class="archiveTitle">Search results</h1>${listing()}${listing('second-audio', 'Second &amp; Third - Another Author')}</div>`; }
 function detail(options = {}) {
   const hash = options.noHash ? '' : `<tr><td>Info Hash:</td><td>${options.hash || HASH}</td></tr>`;
   return `<div id="content"><div class="post"><div class="postTitle"><h1>Synthetic Audio - Example Author</h1></div>
@@ -63,7 +63,7 @@ test('search returns audiobook identity, actual format, size, language and cover
   const { source, requests } = load();
   const results = await source.search('Synthetic Audio', 1);
   assert.equal(results.length, 2); assert.equal(requests.length, 1);
-  assert.equal(requests[0].url, BASE + '/?s=Synthetic%20Audio');
+  assert.equal(requests[0].url, BASE + '/?s=synthetic%20audio');
   assert.equal(results[0].contentType, 'audiobooks'); assert.equal(results[0].contentTypes[0], 'audiobook');
   assert.equal(results[0].format, 'm4b'); assert.equal(results[0].size, '211.73 MB');
   assert.equal(results[0].author, 'Example Author'); assert.equal(results[0].language, 'English');
@@ -71,7 +71,7 @@ test('search returns audiobook identity, actual format, size, language and cover
 });
 test('pagination matches actual website links and escapes query characters', async () => {
   const { source, requests } = load(); await source.search('Jane & Austen', 2);
-  assert.equal(requests[0].url, BASE + '/page/2/?s=Jane%20%26%20Austen');
+  assert.equal(requests[0].url, BASE + '/page/2/?s=jane%20%26%20austen');
 });
 
 test('explicit seed counts use the generic field and label with a legacy fallback', async () => {
@@ -164,10 +164,114 @@ test('search cache and simultaneous requests deduplicate and callers cannot muta
   assert.equal(requests.length, 1); values[0][0].title = 'changed';
   assert.equal((await source.search('same'))[0].title, 'Synthetic Audio'); assert.equal(values[1][0].title, 'Synthetic Audio');
 });
+test('catalog capitalization cannot redirect a title search to unrelated homepage listings', async () => {
+  const { source, requests } = load({ fetch: async url => {
+    const query = new URL(url).searchParams.get('s');
+    return { status: 200, data: query === 'wind and truth'
+      ? `<div id="content"><h1 class="archiveTitle">Wind And Truth Audiobooks Free Download</h1>${listing('target', 'Wind and Truth - Brandon Sanderson')}</div>`
+      : `<div id="content">${listing('unrelated', 'Unrelated Book - Another Author')}</div>` };
+  } });
+  const results = await source.search('Wind and Truth');
+  assert.equal(requests[0].url, BASE + '/?s=wind%20and%20truth');
+  assert.equal(results[0].title, 'Wind and Truth');
+  assert.equal(results[0].author, 'Brandon Sanderson');
+});
+test('search never caches a redirected homepage as success, while browsing still accepts it', async () => {
+  const homepage = `<div id="content">${listing()}</div>`;
+  const { source, requests } = load({ fetch: async () => ({ status: 200, data: homepage }) });
+  await assert.rejects(source.search('title'), /Verify Website/);
+  await assert.rejects(source.search('title'), /Verify Website/);
+  assert.equal(requests.length, 2);
+  assert.equal((await source.getDiscoverItems('latest', 1)).length, 1);
+});
+test('redirected HTTP search can recover through a valid browser search response', async () => {
+  const { source, requests } = load({ browser: true, fetch: async (_url, _options, browser) => ({status: 200,
+    data: browser ? listHtml() : `<div id="content">${listing('unrelated')}</div>` }) });
+  const results = await source.search('title');
+  assert.equal(requests.length, 2); assert.equal(results.length, 2);
+  assert.equal(results[0].id, '/abss/synthetic-audio/');
+});
+test('differently capitalized searches share their normalized cache without changing display titles', async () => {
+  const { source, requests } = load();
+  const results = await Promise.all([source.search('Synthetic Audio'), source.search('synthetic audio')]);
+  assert.equal(requests.length, 1); assert.equal(results[0][0].title, 'Synthetic Audio');
+});
+test('a background browse browser request does not discard a concurrent search', async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const browserURLs = [];
+  const { source } = load({ browser: true, fetch: async (url, _options, browser) => {
+    if (!browser) return {status: 403, data: ''};
+    browserURLs.push(url);
+    if (browserURLs.length === 1) await gate;
+    return {status: 200, data: listHtml()};
+  } });
+  const browse = source.getDiscoverItems('latest', 1);
+  for (let i = 0; i < 20 && browserURLs.length === 0; i++) await Promise.resolve();
+  const search = source.search('Wind and Truth');
+  const settled = Promise.allSettled([browse, search]);
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+  assert.equal(browserURLs.length, 1);
+  release();
+  const results = await settled;
+  assert.ok(results.every(result => result.status === 'fulfilled'), JSON.stringify(results));
+  assert.equal(browserURLs.length, 2);
+});
 test('cache is bounded and manual website verification clears failed/stale state', async () => {
   const { source } = load(); for (let i = 0; i < 40; i++) source._remember('key' + i, [], 10000);
   assert.equal(source._cache.length, 24); source._cooldownUntil = Date.now() + 30000;
   await source.completeSettingAction(); assert.equal(source._cache.length, 0); assert.equal(source._cooldownUntil, 0);
+});
+
+test('queued browser work honors a rate limit received by the preceding request', async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  let calls = 0;
+  const { source } = load({ browser: true, fetch: async (_url, _options, browser) => {
+    if (!browser) return {status: 403, data: ''};
+    calls++; await gate; return {status: 429, data: ''};
+  } });
+  const results = Promise.allSettled([source.search('first'), source.search('second')]);
+  for (let i = 0; i < 40; i++) await Promise.resolve();
+  assert.equal(calls, 1);
+  release();
+  assert.ok((await results).every(result => result.status === 'rejected' && /limiting/.test(result.reason.message)));
+  assert.equal(calls, 1); assert.equal(source._browserPending, 0);
+  await assert.rejects(source.search('third'), /limiting/);
+  assert.equal(calls, 1);
+});
+
+test('a failed browser request releases the queue for another search', async () => {
+  let calls = 0;
+  const { source } = load({ browser: true, fetch: async (_url, _options, browser) => {
+    if (!browser) return {status: 403, data: ''};
+    if (++calls === 1) throw new Error('Network request failed');
+    return {status: 200, data: listHtml()};
+  } });
+  const results = await Promise.allSettled([source.search('first'), source.search('second')]);
+  assert.equal(results[0].status, 'rejected'); assert.equal(results[1].status, 'fulfilled');
+  assert.equal(calls, 2); assert.equal(source._browserPending, 0); assert.equal(source._browserTail, null);
+});
+
+test('browser fallback queue is bounded and drops expired work before opening another page', async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  let calls = 0;
+  const { source } = load({ browser: true, fetch: async () => {
+    calls++; await gate; return {status: 200, data: listHtml()};
+  } });
+  const deadline = Date.now() + 10000;
+  const first = source._browserPage(BASE, {}, false, false, true, deadline);
+  const expired = source._browserPage(BASE, {}, false, false, true, Date.now() - 1);
+  const third = source._browserPage(BASE, {}, false, false, true, deadline);
+  const fourth = source._browserPage(BASE, {}, false, false, true, deadline);
+  const results = Promise.allSettled([first, expired, third, fourth]);
+  await assert.rejects(source._browserPage(BASE, {}, false, false, true, deadline), /busy/);
+  release();
+  const settled = await results;
+  assert.equal(settled[1].status, 'rejected'); assert.match(settled[1].reason.message, /timed out/);
+  assert.equal(settled.filter(r => r.status === 'fulfilled').length, 3);
+  assert.equal(calls, 3); assert.equal(source._browserPending, 0); assert.equal(source._browserTail, null);
 });
 test('older Cinder API shape works without resolveUrl or browser session helpers', async () => {
   const { source } = load({ legacy: true }); assert.equal((await source.search('title'))[0].cover, 'https://images.example.org/cover.jpg');

@@ -4,7 +4,7 @@
 var AudioBookBaySource = {
   id: "audiobookbay",
   name: "AudioBookBay",
-  version: "0.1.1-cinder",
+  version: "0.1.2-cinder",
   icon: "headset-outline",
   description: "Search audiobook releases and resolve their torrents through a connected debrid service.",
   language: "Multilingual",
@@ -16,7 +16,7 @@ var AudioBookBaySource = {
   capabilities: { search: true, searchDownloads: true, discover: true, resolve: true, download: false, manga: false },
   downloadResults: { order: "source", limit: 40 },
   BASE: "https://audiobookbay.lu",
-  _cache: [], _pending: {}, _browserBusy: false, _cooldownUntil: 0
+  _cache: [], _pending: {}, _browserTail: null, _browserPending: 0, _cooldownUntil: 0
 };
 
 AudioBookBaySource._text = function (value) { return String(value || "").replace(/\s+/g, " ").trim(); };
@@ -90,18 +90,48 @@ AudioBookBaySource._headers = async function (url) {
   }
   return headers;
 };
-AudioBookBaySource._document = function (response, detail) {
+AudioBookBaySource._document = function (response, detail, search) {
   var html = response && typeof response.data === "string" ? response.data : "";
   if (html.length > 2000000) throw new Error("AudioBookBay returned an unusually large page. Try a narrower search.");
   if (!response || response.status < 200 || response.status >= 400 || !html) return null;
   var doc = cinder.parseHTML(html), main = doc.querySelector("#content");
   if (!main) return null;
+  // A redirected homepage also contains .postTitle results. Search must have
+  // the site's search heading before accepting or caching those posts.
+  if (search && !main.querySelector(".archiveTitle")) return null;
   if (main.querySelector(detail ? ".postTitle h1" : ".postTitle h2 a")) return doc;
   if (!detail && main.querySelector(".archiveTitle") && /Please try again with another query/i.test(main.text())) return doc;
   return null;
 };
-AudioBookBaySource._page = async function (url, detail, browse) {
+AudioBookBaySource._browserPage = function (url, headers, detail, browse, search, deadline) {
+  if (this._browserPending >= 4) return Promise.reject(new Error("AudioBookBay is busy. Retry shortly."));
+  var self = this, previous = this._browserTail || Promise.resolve();
+  this._browserPending++;
+  var request = previous.catch(function () {}).then(async function () {
+    if (self._cooldownUntil > Date.now()) throw new Error("AudioBookBay is limiting requests. Wait a moment, then retry.");
+    var timeout = Math.min(browse ? 4000 : 6000, deadline - Date.now());
+    if (timeout < 500) throw new Error("AudioBookBay browser search timed out. Retry shortly.");
+    headers["X-Cinder-Suppress-Interactive"] = "1";
+    headers["X-Cinder-Wait-For-Selector"] = detail ? "#content .postTitle h1" : search ? "#content .archiveTitle" : "#content .postTitle h2, #content .archiveTitle";
+    headers["X-Cinder-Min-Wait-Ms"] = "300";
+    headers["X-Cinder-Max-Wait-Ms"] = String(Math.max(300, timeout - 1000));
+    headers["X-Cinder-Visible-Layout"] = "1";
+    var response = await cinder.fetchBrowser(url, { browserUserAgent: "desktop", headers: headers, timeout: timeout });
+    if (response && response.status === 429) self._cooldownUntil = Date.now() + 30000;
+    return response;
+  });
+  this._browserTail = request;
+  return request.then(function (response) {
+    self._browserPending--; if (self._browserTail === request) self._browserTail = null;
+    return response;
+  }, function (error) {
+    self._browserPending--; if (self._browserTail === request) self._browserTail = null;
+    throw error;
+  });
+};
+AudioBookBaySource._page = async function (url, detail, browse, search) {
   if (this._cooldownUntil > Date.now()) throw new Error("AudioBookBay is limiting requests. Wait a moment, then retry.");
+  var deadline = Date.now() + (browse ? 8500 : 13500);
   var headers = await this._headers(url), response = null;
   try { response = await cinder.fetch(url, { headers: headers, timeout: browse ? 4000 : 5500 }); } catch (_) {}
   if (response && response.status === 429) {
@@ -109,22 +139,15 @@ AudioBookBaySource._page = async function (url, detail, browse) {
     throw new Error("AudioBookBay is limiting requests. Wait 30 seconds, then retry.");
   }
   if (detail && response && response.status === 404) throw new Error("This AudioBookBay release is no longer available.");
-  var doc = this._document(response, detail);
+  var doc = this._document(response, detail, search);
   if (doc) return doc;
   // One bounded hidden-browser fallback; manual verification remains an explicit setting.
-  if (typeof cinder.fetchBrowser === "function" && !this._browserBusy) {
-    this._browserBusy = true;
+  if (typeof cinder.fetchBrowser === "function") {
     try {
-      headers["X-Cinder-Suppress-Interactive"] = "1";
-      headers["X-Cinder-Wait-For-Selector"] = detail ? "#content .postTitle h1" : "#content .postTitle h2, #content .archiveTitle";
-      headers["X-Cinder-Min-Wait-Ms"] = "300";
-      headers["X-Cinder-Max-Wait-Ms"] = browse ? "3000" : "5000";
-      headers["X-Cinder-Visible-Layout"] = "1";
-      response = await cinder.fetchBrowser(url, { browserUserAgent: "desktop", headers: headers, timeout: browse ? 4000 : 6000 });
+      response = await this._browserPage(url, headers, detail, browse, search, deadline);
     } catch (_) { response = null; }
-    finally { this._browserBusy = false; }
-    if (response && response.status === 429) this._cooldownUntil = Date.now() + 30000;
-    doc = this._document(response, detail);
+    if (this._cooldownUntil > Date.now()) throw new Error("AudioBookBay is limiting requests. Wait a moment, then retry.");
+    doc = this._document(response, detail, search);
     if (doc) return doc;
   }
   throw new Error("AudioBookBay did not return a readable page. Open extension settings > Verify Website, complete any website check, then retry.");
@@ -190,7 +213,9 @@ AudioBookBaySource._listing = function (doc, base) {
   return result;
 };
 AudioBookBaySource._list = async function (query, page, category, browse) {
-  var self = this, base = await this._base(), q = this._text(query).slice(0, 50);
+  // The website redirects capitalized query values to its homepage. Normalize
+  // only the request/cache key; leave release titles and stable IDs untouched.
+  var self = this, base = await this._base(), q = this._text(query).toLowerCase().slice(0, 50);
   var number = Number(page), n = isFinite(number) && number > 1 ? Math.min(500, Math.floor(number)) : 1;
   var path = category ? "/audio-books/type/" + category + "/" : "/";
   if (n > 1) path += "page/" + n + "/";
@@ -198,7 +223,7 @@ AudioBookBaySource._list = async function (query, page, category, browse) {
   var cached = this._get(key);
   if (cached) return JSON.parse(JSON.stringify(cached));
   var results = await this._single(key, async function () {
-    return self._remember(key, self._listing(await self._page(url, false, browse), base), 30000);
+    return self._remember(key, self._listing(await self._page(url, false, browse, !!q), base), 30000);
   });
   return JSON.parse(JSON.stringify(results));
 };

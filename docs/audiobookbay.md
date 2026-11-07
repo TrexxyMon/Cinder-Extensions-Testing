@@ -3,6 +3,7 @@
 Private testing extension for audiobook-capable Cinder builds. Search, details, browsing and torrent resolution run on the device. There is no scraping server or additional API key.
 
 - Search returns the site's release order and pagination, with its title, author, cover, audio format, size and language when available.
+- Version 0.1.2 normalizes request queries to lowercase because the current website redirects capitalized searches to its homepage. Displayed metadata and release IDs are unchanged. Search responses must contain the search heading, so an unexpected homepage redirect cannot become unrelated results or a cached success.
 - Version 0.1.1 adds `availabilityLabel: "Seeders"`, with generic `availability` and legacy `seeders` counts when the page contains an explicit Seeds/Seeders statistic. Live search/detail pages inspected on 2026-11-03 did not publish those counts, so they remain unknown rather than a fabricated zero. No per-result tracker or third-party requests were added.
 - Details add the site's synopsis and narrator when available. Metadata is the release's own data and may be inaccurate; actual debrid files determine the downloaded audio tracks.
 - Latest Audiobooks, Fiction, Fantasy, Mystery and Science Fiction are optional Discover shelves. Nothing is added automatically.
@@ -16,6 +17,8 @@ Private testing extension for audiobook-capable Cinder builds. Search, details, 
 The extension uses existing `cinder.fetch`, `parseHTML`, namespaced settings and `debridLink` contracts. Browser/session/URL helpers are optional and guarded. It does not require new extension APIs. Old app versions without an audiobook player cannot play audiobook files, even if their extension parser can run this script. The repository entry requires 1.2.4; private testers must use the new audiobook-capable build.
 
 One page fetch produces all search results, with no per-result detail requests. Concurrent identical requests share work. Parsed result/detail caches are limited to 24 entries and expire in 30/60 seconds; no persistent HTML, credentials or large binary data is retained. Direct HTTP is attempted first. A single bounded hidden-browser fallback handles readable browser sessions; it does not solve interactive challenges. Search and browse request budgets stay below the current runtime's 15/10-second deadlines under normal bridge behavior.
+
+Browser fallbacks serialize through a queue capped at four active/pending requests. A Discover request can no longer silently discard a concurrent search fallback. Queued requests respect their original deadline and any rate limit returned by the preceding request. Rejected requests release the queue; they are never cached as empty results.
 
 Release identity is its stable site path, not the chosen mirror. Resolution refuses invalid or conflicting torrent hashes. A detail page lacking a torrent may still display its metadata, but cannot start a misleading download.
 
@@ -41,3 +44,9 @@ node --test tests/audiobookbay.test.cjs
 Captured live pages are local research artifacts, not repository fixtures. The two optional captured-page tests skip if those artifacts are absent. All synthetic regression cases still run.
 
 Still required: Expo search/details/verification UI, installed iOS and Android debrid download/import/playback, multifile/collection selection, and provider-specific streaming checks using authorized content. Static parser tests do not establish those device outcomes.
+
+## Search regression validation (2026-11-06)
+
+Live public HTTP reproduced a capitalized `Wind and Truth` search redirecting to the homepage while the lowercase equivalent returned its search page. The complete read-only check used the live iTunes audiobook record, Cinder's actual metadata mapper, download-query builder, HTML parser, result adapter and relevance filter. The published 0.1.1 script produced nine unrelated homepage entries and zero retained matches. Version 0.1.2 produced three search entries and two retained matches, using one request with no browser fallback, per-result fetches or media downloads.
+
+Added deterministic regressions cover query case, homepage redirects, browser recovery, case-insensitive cache deduplication, concurrent Discover/search fallbacks, queue bounds, expiry, failure recovery and rate limiting. These run on both the current Cinder parser and the historical build-159 parser. Live HTTP checks do not substitute for installed-device verification.
