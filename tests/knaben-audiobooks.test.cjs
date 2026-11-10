@@ -36,7 +36,8 @@ test('uses audiobook category on the documented GET endpoint and returns real co
   assert.equal(u.origin + u.pathname, 'https://api.knaben.org/v2/search');
   assert.equal(u.searchParams.get('q'), 'Title & Author'); assert.equal(u.searchParams.get('c'), '1003000');
   assert.equal(u.searchParams.get('f'), '40'); assert.equal(u.searchParams.get('s'), '40');
-  for (const key of ['xxx', 'unsafe', 'dead']) assert.equal(u.searchParams.has(key), false);
+  for (const key of ['xxx', 'unsafe']) assert.equal(u.searchParams.has(key), false);
+  assert.equal(u.searchParams.has('dead'), true);
   assert.equal(h.calls[0].options.timeout, 5000);
   assert.equal(result.contentType, 'audiobooks'); assert.equal(result.availability, 12); assert.equal(result.seeders, 12);
   assert.equal(result.availabilityLabel, 'Seeders'); assert.equal(result.size, '1.0 GB'); assert.equal(result.format, 'm4b');
@@ -50,6 +51,23 @@ test('retains zero, distinguishes unavailable counts, and rejects invalid counts
   for (const bad of [null, false, -1, 0.4, 'many', '', Infinity, 1e20]) {
     assert.equal(s._item(row({ liveSeeders: bad, seeders: bad })).availability, undefined);
   }
+});
+
+test('zero-peer releases stay discoverable and exact-hash resolution survives source inactivity', async () => {
+  const h = load(async url => ({ status: 200, data: { hits: new URL(url).searchParams.has('dead')
+    ? [row({ liveSeeders: 0, seeders: 0 })] : [] } }));
+  const [item] = await h.source.search('Book');
+  assert.ok(item);
+  assert.equal(item.availability, 0);
+  h.advance(61000);
+  const resolved = await h.source.resolve(item);
+  assert.match(resolved.debridLink, new RegExp('^magnet:\\?xt=urn:btih:' + HASH));
+  assert.equal(h.calls.length, 2);
+  const lookup = new URL(h.calls[1].url);
+  assert.equal(lookup.searchParams.get('sf'), 'hash');
+  assert.equal(lookup.searchParams.get('q'), HASH);
+  assert.equal(lookup.searchParams.get('dead'), '');
+  assert.equal(lookup.searchParams.get('c'), '1003000');
 });
 test('rejects non-audiobook results even if the server ignores its category filter', async () => {
   const h = load(async () => ({ status: 200, data: { hits: [row({ categoryId: [7001000] }), row({ categoryId: [1001000] }), row({ categoryId: null }), row()] } }));
@@ -69,7 +87,19 @@ test('rejects conflicting or malformed identity, including encoded conflicts', (
     { hash: null, magnetUrl: null }]) assert.equal(s._item(row(patch)), null);
   assert.equal(s._item(row({ hash: null })).id, HASH);
   assert.equal(s._item(row({ magnetUrl: null })).id, HASH);
-  assert.equal(s._hash('A'.repeat(32)), '0'.repeat(40));
+  assert.equal(s._hash('A'.repeat(32)), '');
+});
+
+test('zero torrent identities cannot become downloadable search results', async () => {
+  const h = load(async () => ({ status: 200, data: { hits: [
+    row({ hash: '0'.repeat(40), magnetUrl: null }),
+    row({ hash: null, magnetUrl: 'magnet:?xt=urn:btih:' + 'A'.repeat(32) }), row(),
+  ] } }));
+  const results = await h.source.search('Book');
+  assert.equal(results.length, 1);
+  assert.equal(results[0].id, HASH);
+  await assert.rejects(h.source.resolve({ id: '0'.repeat(40) }), /Invalid/);
+  assert.equal(h.calls.length, 1);
 });
 test('deduplicates the same release across trackers without adding their counts', async () => {
   const h = load(async () => ({ status: 200, data: { hits: [row(), row({ tracker: 'Second', liveSeeders: 300 }), row({ hash: OTHER, magnetUrl: null })] } }));
@@ -107,6 +137,7 @@ test('only documented discovery sections browse and use the same category', asyn
   const h = load(); assert.equal((await h.source.getDiscoverSections()).length, 2);
   await h.source.getDiscoverItems('latest', 1); assert.equal(new URL(h.calls[0].url).pathname, '/v2/browse');
   assert.equal(new URL(h.calls[0].url).searchParams.get('o'), 'date');
+  assert.equal(new URL(h.calls[0].url).searchParams.has('dead'), true);
   assert.equal((await h.source.getDiscoverItems('unknown')).length, 0); assert.equal(h.calls.length, 1);
 });
 test('cache, response size and page inputs are bounded', async () => {

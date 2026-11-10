@@ -45,6 +45,25 @@ Captured live pages are local research artifacts, not repository fixtures. The t
 
 Still required: Expo search/details/verification UI, installed iOS and Android debrid download/import/playback, multifile/collection selection, and provider-specific streaming checks using authorized content. Static parser tests do not establish those device outcomes.
 
+## November 10, 2026 audit
+
+Version 0.1.3 canonicalizes hexadecimal and base32 torrent identities before
+comparing the detail-table hash with explicit magnets. Equivalent encodings no
+longer produce a false conflicting-release error; different identities still do.
+All-zero identities are rejected. Existing release paths, website verification,
+settings, source ordering, caches, and debrid-only handoff remain unchanged.
+
+Live executable searches returned nine `librivox`, three `Wind and Truth`, and one
+`Isles of the Emberdark` result. Both initial-page conventions returned the same
+cached results. One detail-page resolution produced a valid magnet, never an HTML,
+advertisement, sample-audio, or invented file URL. No audio payload was downloaded.
+
+The combined three-extension suite passed 64 tests with two optional historical
+captured-page tests skipped. This source also passed 35 tests against Cinder's
+historical build-159 HTML parser with the same two optional captures skipped.
+These are parser/contract and public search checks, not signed-in debrid or device
+download/playback validation.
+
 ## Search regression validation (2026-11-06)
 
 Live public HTTP reproduced a capitalized `Wind and Truth` search redirecting to the homepage while the lowercase equivalent returned its search page. The complete read-only check used the live iTunes audiobook record, Cinder's actual metadata mapper, download-query builder, HTML parser, result adapter and relevance filter. The published 0.1.1 script produced nine unrelated homepage entries and zero retained matches. Version 0.1.2 produced three search entries and two retained matches, using one request with no browser fallback, per-result fetches or media downloads.

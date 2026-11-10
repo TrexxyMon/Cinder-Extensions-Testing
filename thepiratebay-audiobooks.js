@@ -3,7 +3,7 @@
 var PirateBayAudiobooks = {
   id: "thepiratebay-audiobooks",
   name: "The Pirate Bay Audiobooks",
-  version: "0.1.1-cinder",
+  version: "0.1.2-cinder",
   icon: "headset-outline",
   description: "Find audiobook releases and download them through your connected debrid service.",
   language: "Multilingual",
@@ -87,7 +87,8 @@ PirateBayAudiobooks._item = function (row) {
 };
 PirateBayAudiobooks.search = async function (query, page) {
   // The upstream API returns one bounded result set, not independently paged results.
-  if (Number(page) > 0) return [];
+  // Cinder's download search starts at zero; its individual-source browser at one.
+  if (Number(page) > 1) return [];
   var q = this._text(query).slice(0, 200);
   if (!q) return [];
   var self = this, key = "q:" + q, now = Date.now();

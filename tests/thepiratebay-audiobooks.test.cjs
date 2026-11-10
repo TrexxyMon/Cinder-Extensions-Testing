@@ -84,9 +84,22 @@ test('deduplicates simultaneous searches and caches results without sharing muta
 });
 test('cache remains bounded and blank or further-page searches never repeat the first page', async () => {
   const { source, calls } = load();
-  assert.equal((await source.search('')).length, 0); assert.equal((await source.search('test', 1)).length, 0); assert.equal(calls.length, 0);
+  assert.equal((await source.search('')).length, 0); assert.equal((await source.search('test', 2)).length, 0); assert.equal(calls.length, 0);
   for (let i=0;i<12;i++) await source.search('title '+i);
   assert.equal(source._cache.length, 8);
+});
+
+test('browse search page one and download search page zero share the first result set', async () => {
+  const { source, calls } = load();
+  const browse = await source.search('Book', 1);
+  assert.equal(browse.length, 1);
+  const download = await source.search('Book', 0);
+  const unspecified = await source.search('Book');
+  assert.equal(download[0].id, browse[0].id);
+  assert.equal(unspecified[0].id, browse[0].id);
+  assert.equal(calls.length, 1);
+  assert.equal((await source.search('Book', 2)).length, 0);
+  assert.equal(calls.length, 1);
 });
 test('429 Retry-After suppresses extra variants then permits a later retry', async () => {
   const { source, calls, advance } = load(async () => ({ status:429,headers:{'Retry-After':'60'},data:'429 Too Many Requests' }));

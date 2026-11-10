@@ -1,6 +1,6 @@
 // Knaben API v2, queried on-device. Remote preparation/downloads belong to Cinder.
 var KnabenAudiobooks = {
-  id: "knaben-audiobooks", name: "Knaben Audiobooks", version: "0.1.0-cinder",
+  id: "knaben-audiobooks", name: "Knaben Audiobooks", version: "0.1.1-cinder",
   icon: "headset-outline", language: "Multilingual",
   description: "Search audiobook releases using Knaben and your connected debrid service.",
   contentType: "audiobooks", contentTypes: ["audiobook"],
@@ -20,14 +20,14 @@ KnabenAudiobooks._count = function (value) {
 };
 KnabenAudiobooks._hash = function (value) {
   if (typeof value !== "string") return "";
-  if (/^[a-f0-9]{40}$/i.test(value)) return value.toLowerCase();
+  if (/^[a-f0-9]{40}$/i.test(value)) return /^0{40}$/.test(value) ? "" : value.toLowerCase();
   if (!/^[a-z2-7]{32}$/i.test(value)) return "";
   var alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567", bits = 0, buffer = 0, hex = "";
   for (var i = 0; i < value.length; i++) {
     buffer = (buffer << 5) | alphabet.indexOf(value[i].toUpperCase()); bits += 5;
     if (bits >= 8) { bits -= 8; hex += ("0" + ((buffer >> bits) & 255).toString(16)).slice(-2); buffer &= (1 << bits) - 1; }
   }
-  return hex;
+  return /^0{40}$/.test(hex) ? "" : hex;
 };
 KnabenAudiobooks._identity = function (row) {
   var declared = row.hash == null ? "" : this._hash(row.hash), hashes = [], trackers = [];
@@ -87,7 +87,9 @@ KnabenAudiobooks._request = function (query, page, order, hashSearch) {
   var self = this, q = this._text(query).slice(0, 200), n = Number(page);
   n = isFinite(n) && n >= 1 ? Math.min(100, Math.floor(n)) : 1;
   var url = this.API + (q ? "/search?q=" + encodeURIComponent(q) + "&sf=" + (hashSearch ? "hash" : "title") + "&" : "/browse?")
-    + "c=" + this.CATEGORY + "&s=" + this.PAGE_SIZE + "&f=" + ((n - 1) * this.PAGE_SIZE) + "&o=" + (order === "date" ? "date" : "seeders") + "&d=desc";
+    + "c=" + this.CATEGORY + "&s=" + this.PAGE_SIZE + "&f=" + ((n - 1) * this.PAGE_SIZE) + "&o=" + (order === "date" ? "date" : "seeders") + "&d=desc&dead";
+  // A provider may already cache a release with no current peers. Include those
+  // in search and exact-hash revalidation; availability is still shown honestly.
   var cached = this._get(url); if (cached) return Promise.resolve(JSON.parse(JSON.stringify(cached)));
   if (this._pending[url]) return this._pending[url].then(function (items) { return JSON.parse(JSON.stringify(items)); });
   var work = (async function () {

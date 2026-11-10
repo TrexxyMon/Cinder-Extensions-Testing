@@ -4,7 +4,7 @@
 var AudioBookBaySource = {
   id: "audiobookbay",
   name: "AudioBookBay",
-  version: "0.1.2-cinder",
+  version: "0.1.3-cinder",
   icon: "headset-outline",
   description: "Search audiobook releases and resolve their torrents through a connected debrid service.",
   language: "Multilingual",
@@ -239,7 +239,15 @@ AudioBookBaySource.getDiscoverItems = function (section, page) {
 };
 AudioBookBaySource._hash = function (value) {
   var hash = this._text(value);
-  return /^[a-f0-9]{40}$/i.test(hash) ? hash.toLowerCase() : /^[a-z2-7]{32}$/i.test(hash) ? hash.toUpperCase() : "";
+  if (/^[a-f0-9]{40}$/i.test(hash)) return /^0{40}$/.test(hash) ? "" : hash.toLowerCase();
+  if (!/^[a-z2-7]{32}$/i.test(hash)) return "";
+  // Canonicalize the two encodings before comparing a table hash with a magnet.
+  var alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567", bits = 0, buffer = 0, hex = "";
+  for (var i = 0; i < hash.length; i++) {
+    buffer = (buffer << 5) | alphabet.indexOf(hash[i].toUpperCase()); bits += 5;
+    if (bits >= 8) { bits -= 8; hex += ("0" + ((buffer >> bits) & 255).toString(16)).slice(-2); buffer &= (1 << bits) - 1; }
+  }
+  return /^0{40}$/.test(hex) ? "" : hex;
 };
 AudioBookBaySource._torrent = function (post, item) {
   var rows = post.querySelectorAll(".postContent table tr"), hashes = [], trackers = [], size;

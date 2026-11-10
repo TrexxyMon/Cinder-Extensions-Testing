@@ -134,7 +134,20 @@ test('missing torrent remains readable metadata but gives an actionable resolve 
 test('validated explicit base32 magnet supported when no table hash exists', async () => {
   const hash = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
   const { source } = load({ fetch: async () => ({ status: 200, data: detail({ noHash: true, magnet: 'magnet:?xt=urn:btih:' + hash }) }) });
+  assert.match((await source.resolve({ id: '/abss/synthetic-audio/' })).debridLink, /00443214c74254b635cf84653a56d7c675be77df/);
+});
+
+test('equivalent hex and base32 identities are not conflicting releases', async () => {
+  const hash = '00443214c74254b635cf84653a56d7c675be77df';
+  const { source } = load({ fetch: async () => ({ status: 200, data: detail({ hash, magnet: 'magnet:?xt=urn:btih:ABCDEFGHIJKLMNOPQRSTUVWXYZ234567' }) }) });
   assert.match((await source.resolve({ id: '/abss/synthetic-audio/' })).debridLink, new RegExp(hash));
+});
+
+test('zero identities never initiate provider preparation', async () => {
+  for (const hash of ['0'.repeat(40), 'A'.repeat(32)]) {
+    const { source } = load({ fetch: async () => ({ status: 200, data: detail({ hash }) }) });
+    await assert.rejects(source.resolve({ id: '/abss/synthetic-audio/' }), /invalid torrent identity/);
+  }
 });
 test('empty search is accepted only with site-specific empty-search structure', async () => {
   const { source, requests } = load({ fetch: async () => ({ status: 200, data: '<div id="content"><h1 class="archiveTitle">No matches</h1><h3>Not Found</h3><p>Please try again with another query</p></div>' }) });
