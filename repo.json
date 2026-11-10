@@ -1,8 +1,28 @@
-﻿{
-    "version":  "2.1.107",
+{
+    "version":  "2.1.108",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
+                       {
+                           "id": "mobilism",
+                           "name": "Mobilism",
+                           "version": "0.1.0-cinder",
+                           "description": "Search Mobilism book releases on-device using your forum account. Download available direct links or use a connected debrid provider.",
+                           "language": "English",
+                           "contentType": "books",
+                           "contentTypes": [
+                               "ebook",
+                               "audiobook"
+                           ],
+                           "excludeFromDefaultMetadataProviders": true,
+                           "browser": {
+                               "startUrl": "https://forum.mobilism.me/ucp.php?mode=login",
+                               "userAgent": "desktop",
+                               "requiresAuth": true
+                           },
+                           "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/mobilism.js",
+                           "minCinderVersion": "1.2.2"
+                       },
                        {
                            "id": "goldenaudiobooks",
                            "name": "GoldenAudiobooks",

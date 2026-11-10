@@ -13,6 +13,7 @@ https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/repo.
 [TrexxyMon/Cinder-Extensions-Testing](https://github.com/TrexxyMon/Cinder-Extensions-Testing)
 
 ## Available Extensions
+- **Mobilism**: On-device forum search with your website login, release metadata, supported direct links and optional debrid. Books by default; audiobook results are opt-in. See [setup, host limitations and validation status](docs/mobilism.md).
 - **GoldenAudiobooks**: On-device search and browsing, with ordered direct audio tracks for downloads and streaming on audiobook-capable Cinder builds. No debrid account required. See [setup and validation](docs/goldenaudiobooks.md).
 - **The Pirate Bay Audiobooks**: Audiobook-only search, release sizes and seeders, with magnet downloads through your connected debrid provider. See [setup and validation](docs/thepiratebay-audiobooks.md).
 - **AudioBookBay**: On-device audiobook search, release details and torrent magnets through your connected debrid provider. Requires an audiobook-capable Cinder build. See [setup and validation](docs/audiobookbay.md).
