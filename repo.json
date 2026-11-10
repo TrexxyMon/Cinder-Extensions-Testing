@@ -1,8 +1,25 @@
 ﻿{
-    "version":  "2.1.106",
+    "version":  "2.1.107",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
+                       {
+                           "id": "goldenaudiobooks",
+                           "name": "GoldenAudiobooks",
+                           "version": "0.1.0-cinder",
+                           "description": "Browse audiobooks and download or stream their ordered audio tracks directly.",
+                           "language": "English",
+                           "contentType": "audiobooks",
+                           "contentTypes": ["audiobook"],
+                           "excludeFromDefaultMetadataProviders": true,
+                           "debridSupport": "none",
+                           "browser": {
+                               "startUrl": "https://goldenaudiobooks.com/",
+                               "userAgent": "desktop"
+                           },
+                           "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/goldenaudiobooks.js",
+                           "minCinderVersion": "1.2.4"
+                       },
                        {
                            "id": "thepiratebay-audiobooks",
                            "name": "The Pirate Bay Audiobooks",
