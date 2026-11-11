@@ -15,15 +15,24 @@ https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/repo.
 ## Available Extensions
 - **Mobilism**: On-device forum search with your website login, release metadata, supported direct links and optional debrid. Books by default; audiobook results are opt-in. See [setup, host limitations and validation status](docs/mobilism.md).
 - **GoldenAudiobooks**: On-device search and browsing, with ordered direct audio tracks for downloads and streaming on audiobook-capable Cinder builds. No debrid account required. See [setup and validation](docs/goldenaudiobooks.md).
-- **The Pirate Bay Audiobooks**: Audiobook-only search, release sizes and seeders, with magnet downloads through your connected debrid provider. See [setup and validation](docs/thepiratebay-audiobooks.md).
-- **AudioBookBay**: On-device audiobook search, release details and torrent magnets through your connected debrid provider. Requires an audiobook-capable Cinder build. See [setup and validation](docs/audiobookbay.md).
-- **Knaben Audiobooks**: Audiobook-only search and optional discovery shelves using the official API, published seed counts, and magnet handoff to your connected debrid provider. See [setup and validation](docs/knaben-audiobooks.md).
 - **Z-Library (Direct)**: Scrapes Z-Library mirrors with IP rotation and Cloudflare bypass.
 - **JNovels**: Searches JNovels light novel EPUB/PDF posts with on-device link resolution.
 - **NovelUpdates**: Searches and discovers translated web novels, loads rich series metadata, and builds available translator chapters into EPUB. Use the extension website button for sessions that require login.
 - **ReadComicsOnline**: Searches, browses, and reads western comics from ReadComicsOnline.ru with direct requests and browser fallback.
 
 ## Moved to the public repository
+
+**AudioBookBay, Knaben Audiobooks, and The Pirate Bay Audiobooks** are now
+maintained in the [public repository](https://github.com/TrexxyMon/Cinder-Extensions)
+and are no longer listed in this testing catalog. Add the
+[public repository manifest](https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/repo.json),
+refresh both repositories, and update the installed extensions. Do not uninstall:
+their extension IDs, release IDs, and settings keys are unchanged.
+
+Public versions: AudioBookBay `0.1.4-cinder`, Knaben Audiobooks `0.1.2-cinder`,
+and The Pirate Bay Audiobooks `0.1.3-cinder`. Their previous private scripts remain
+unchanged so cached manifests and older installations keep working. New releases,
+tests, and documentation belong in the public repository.
 
 **Mayberry** is now maintained in [Cinder Extensions](https://github.com/TrexxyMon/Cinder-Extensions) and is no longer listed in this testing catalog. Add the [public repository manifest](https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/repo.json), refresh repositories, and update Mayberry to `0.1.2-cinder`. The `mayberry` extension ID and book IDs are unchanged; do not uninstall it to migrate.
 
