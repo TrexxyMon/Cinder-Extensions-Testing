@@ -1,8 +1,23 @@
 {
-    "version":  "2.1.110",
+    "version":  "2.1.111",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
+                       {
+                           "id": "audiozaic",
+                           "name": "Audiozaic",
+                           "version": "0.1.0-cinder",
+                           "description": "Find audiobooks and download their available MP3 parts as one book.",
+                           "language": "English",
+                           "contentType": "audiobooks",
+                           "contentTypes": ["audiobook"],
+                           "debridSupport": "none",
+                           "excludeFromDefaultMetadataProviders": true,
+                           "browser": { "startUrl": "https://audiozaic.com/" },
+                           "capabilities": { "search": true, "searchDownloads": true, "resolve": true, "resolveOnDownload": true, "audioStreaming": false, "discover": true, "download": false, "manga": false },
+                           "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/audiozaic.js",
+                           "minCinderVersion": "1.2.4"
+                       },
                        {
                            "id": "mobilism",
                            "name": "Mobilism",

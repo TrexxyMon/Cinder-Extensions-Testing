@@ -13,6 +13,7 @@ https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/repo.
 [TrexxyMon/Cinder-Extensions-Testing](https://github.com/TrexxyMon/Cinder-Extensions-Testing)
 
 ## Available Extensions
+- **Audiozaic** searches audiobooks and downloads their numbered MP3 parts as one library entry. The website's countdowns start when you choose a download and take about a minute. Playback is available after download. Requires Cinder 1.2.4 or newer.
 - **Mobilism**: On-device forum search with your website login, release metadata, supported direct links and optional debrid. Books by default; audiobook results are opt-in. See [setup, host limitations and validation status](docs/mobilism.md).
 - **Z-Library (Direct)**: Scrapes Z-Library mirrors with IP rotation and Cloudflare bypass.
 - **JNovels**: Searches JNovels light novel EPUB/PDF posts with on-device link resolution.
