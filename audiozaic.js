@@ -114,7 +114,7 @@ function azPlayer(post) {
 
 function azMedia(value) {
   const url = azUrl(value);
-  if (!url || !/^audio\d*\.audiobookslab\.com$/.test(url.hostname) || !/\.mp3$/i.test(url.pathname)) return "";
+  if (!url || !/^(?:audio\d*|free2)\.audiobookslab\.com$/.test(url.hostname) || !/\.mp3$/i.test(url.pathname)) return "";
   return url.href;
 }
 
@@ -143,11 +143,16 @@ function azTracks(doc) {
   const media = new Set();
   const tracks = buttons.map(button => {
     const caption = azText(button.querySelector(".rp-download-label")) || azText(button);
-    const match = /^Part\s+(\d+)$/i.exec(caption);
+    const match = /^(Part|Chapter)\s+(\d+)$/i.exec(caption);
     const link = azFileLink(button.attr("href"), AZ, false);
-    if (!link || !match || media.has(link.media)) throw new Error("Audiozaic returned an invalid or duplicate download part.");
-    media.add(link.media);
-    return { number: Number(match[1]), link: link };
+    if (!match) throw new Error("Audiozaic returned an unrecognized chapter or part label.");
+    const kind = match[1].toLowerCase() === "chapter" ? "Chapter" : "Part";
+    const number = Number(match[2]);
+    if (!link) throw new Error("Audiozaic returned an unsupported download link for " + kind + " " + number + ".");
+    const key = azPlayerMediaKey(link.media);
+    if (media.has(key)) throw new Error("Audiozaic listed the same audio twice at " + kind + " " + number + ".");
+    media.add(key);
+    return { number: number, kind: kind, link: link };
   }).sort((a, b) => a.number - b.number);
   if (tracks.some((track, i) => track.number !== i + 1)) throw new Error("Audiozaic's download list has missing or duplicate parts.");
   const players = doc.querySelectorAll("audio");
@@ -156,7 +161,7 @@ function azTracks(doc) {
       const source = player.querySelector("source[src]");
       return azPlayerMediaKey(player.attr("src") || (source && source.attr("src")));
     }));
-    if (players.length !== tracks.length || playerMedia.size !== media.size || tracks.some(track => !playerMedia.has(azPlayerMediaKey(track.link.media)))) {
+    if (players.length !== tracks.length || playerMedia.size !== media.size || Array.from(media).some(key => !playerMedia.has(key))) {
       throw new Error("Audiozaic's download parts do not match the complete player track list.");
     }
   }
@@ -177,7 +182,7 @@ function azReadyFile(doc, track) {
   const countdown = script && /\bvar\s+dlSecs\s*=\s*(\d+)\s*;/.exec(script);
   if (!preparation || !countdown) throw new Error("Audiozaic changed its download countdown. The file could not be prepared.");
   return { readyAt: Date.now() + Number(preparation[1]) + Number(countdown[1]) * 1000,
-    file: { url: target.url, name: "Part " + String(track.number).padStart(3, "0") + ".mp3", title: "Part " + track.number } };
+    file: { url: target.url, name: track.kind + " " + String(track.number).padStart(3, "0") + ".mp3", title: track.kind + " " + track.number } };
 }
 
 function azTimeLeft(deadline) {
@@ -222,7 +227,7 @@ async function azResolve(id) {
 }
 
 const Audiozaic = {
-  id: "audiozaic", name: "Audiozaic", version: "0.1.0-cinder", icon: "headset-outline",
+  id: "audiozaic", name: "Audiozaic", version: "0.1.1-cinder", icon: "headset-outline",
   description: "Find audiobooks and download their available MP3 parts as one book.",
   language: "English", contentType: "audiobooks", contentTypes: ["audiobook"], debridSupport: "none",
   excludeFromDefaultMetadataProviders: true, browser: { startUrl: AZ + "/" },

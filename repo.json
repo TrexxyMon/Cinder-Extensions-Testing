@@ -36,7 +36,7 @@
                        {
                            "id": "audiozaic",
                            "name": "Audiozaic",
-                           "version": "0.1.0-cinder",
+                           "version": "0.1.1-cinder",
                            "description": "Find audiobooks and download their available MP3 parts as one book.",
                            "language": "English",
                            "contentType": "audiobooks",

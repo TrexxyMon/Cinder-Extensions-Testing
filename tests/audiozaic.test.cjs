@@ -99,7 +99,7 @@ function clock() {
   return { Date: FakeDate, setTimeout: setTimer, now: () => now, settle, delays };
 }
 
-function load({ parts = [1, 2], changeLink, landingPage = landing, catalogPage = catalog, playerPage = playlist, responseUrl = url => url } = {}) {
+function load({ parts = [1, 2], changeLink, landingPage = landing, catalogPage = catalog, playerPage = playlist, responseUrl = url => url, trackMedia = audioUrl } = {}) {
   const time = clock();
   const requests = [];
   let inFlight = 0;
@@ -123,7 +123,7 @@ function load({ parts = [1, 2], changeLink, landingPage = landing, catalogPage =
       else if (url.href === player) data = playerPage(parts, changeLink);
       else if (url.origin === base && !url.pathname.includes('file-audio')) data = catalogPage(url.href);
       else if (url.origin === host && url.pathname === '/download/') {
-        const n = parts.find(part => url.searchParams.get('file') === audioUrl(part));
+        const n = parts.find(part => url.searchParams.get('file') === trackMedia(part));
         assert.ok(n, 'Download landing must refer to a listed MP3');
         data = landingPage(n);
       } else assert.fail(`Unexpected ${method} request to ${url.hostname}${url.pathname}`);
@@ -209,6 +209,29 @@ test('a malformed part in the playlist cannot become a partial audiobook or trig
   const { source, time, requests } = load({ changeLink: (url, part) => part === 2 ? 'https://ads.example/offer' : url });
   await assert.rejects(time.settle(source.resolve({ id, title, url: bookUrl })));
   assert.ok(requests.every(req => new URL(req.url).hostname !== 'ads.example'));
+});
+
+test('resolves all 37 chapter-labelled tracks on the second media host in reading order', async () => {
+  const parts = Array.from({ length: 37 }, (_, i) => 37 - i);
+  const useChapterHost = html => html.replaceAll('audio3.audiobookslab.com', 'free2.audiobookslab.com');
+  const h = load({ parts, trackMedia: n => useChapterHost(audioUrl(n)), landingPage: n => useChapterHost(landing(n)),
+    playerPage: list => useChapterHost(playlist(list)).replaceAll('>Part ', '>Chapter ') });
+  const result = await h.time.settle(h.source.resolve({ id, title, url: bookUrl }));
+  assert.deepEqual(plain(result.audioFiles), parts.slice().reverse().map(n => ({
+    url: useChapterHost(finalUrl(n)), title: 'Chapter ' + n, name: 'Chapter ' + String(n).padStart(3, '0') + '.mp3',
+  })));
+});
+
+test('keeps incomplete chapters, duplicate media and unrelated lookalike hosts out of the transfer queue', async () => {
+  for (const [edit, message] of [
+    [html => html.replace('>Part 2<', '>Chapter 3<'), /missing or duplicate parts/i],
+    [html => html.replace(landingUrl(2), landingUrl(1)), /same audio twice/i],
+    [html => html.replaceAll('audio3.audiobookslab.com', 'free2.audiobookslab.com.example'), /unsupported download link/i],
+  ]) {
+    const h = load({ playerPage: list => edit(playlist(list)) });
+    await assert.rejects(h.time.settle(h.source.resolve({ id, title, url: bookUrl })), message);
+    assert.ok(h.requests.every(request => new URL(request.url).origin === base));
+  }
 });
 
 test('a final redirect for another part cannot replace the expected part', async () => {
