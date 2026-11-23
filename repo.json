@@ -1,8 +1,38 @@
 {
-    "version":  "2.1.111",
+    "version":  "2.1.112",
     "name":  "Cinder Private Extensions (Updated)",
     "author":  "TrexxyMon",
     "extensions":  [
+                       {
+                           "id": "fulllengthaudiobooks",
+                           "name": "FullLengthAudioBooks",
+                           "version": "0.1.0-cinder",
+                           "description": "Browse, stream and download audiobooks from FullLengthAudioBooks, including titles split over multiple pages.",
+                           "language": "English",
+                           "contentType": "audiobooks",
+                           "contentTypes": ["audiobook"],
+                           "debridSupport": "none",
+                           "excludeFromDefaultMetadataProviders": true,
+                           "browser": { "startUrl": "https://fulllengthaudiobooks.com/" },
+                           "capabilities": { "search": true, "searchDownloads": true, "resolve": true, "resolveOnDownload": true, "audioStreaming": true, "discover": true, "download": false, "manga": false },
+                           "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/fulllengthaudiobooks.js",
+                           "minCinderVersion": "1.2.4"
+                       },
+                       {
+                           "id": "bookaudiobooks",
+                           "name": "BookAudioBooks",
+                           "version": "0.1.0-cinder",
+                           "description": "Search, stream and download audiobooks from BookAudioBooks in their original track order.",
+                           "language": "English",
+                           "contentType": "audiobooks",
+                           "contentTypes": ["audiobook"],
+                           "debridSupport": "none",
+                           "excludeFromDefaultMetadataProviders": true,
+                           "browser": { "startUrl": "https://bookaudiobooks.com/" },
+                           "capabilities": { "search": true, "searchDownloads": true, "resolve": true, "resolveOnDownload": true, "audioStreaming": true, "discover": true, "download": false, "manga": false },
+                           "scriptUrl": "https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/bookaudiobooks.js",
+                           "minCinderVersion": "1.2.4"
+                       },
                        {
                            "id": "audiozaic",
                            "name": "Audiozaic",

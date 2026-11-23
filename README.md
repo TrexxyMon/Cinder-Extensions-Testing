@@ -13,6 +13,8 @@ https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/repo.
 [TrexxyMon/Cinder-Extensions-Testing](https://github.com/TrexxyMon/Cinder-Extensions-Testing)
 
 ## Available Extensions
+- **FullLengthAudioBooks** offers search, latest titles, streaming and multipart audiobook downloads. Cinder collects tracks across all pages of the selected edition.
+- **BookAudioBooks** offers search, latest titles, streaming and multipart audiobook downloads, including editions with tracks on several pages.
 - **Audiozaic** searches audiobooks and downloads their numbered MP3 parts as one library entry. The website's countdowns start when you choose a download and take about a minute. Playback is available after download. Requires Cinder 1.2.4 or newer.
 - **Mobilism**: On-device forum search with your website login, release metadata, supported direct links and optional debrid. Books by default; audiobook results are opt-in. See [setup, host limitations and validation status](docs/mobilism.md).
 - **Z-Library (Direct)**: Scrapes Z-Library mirrors with IP rotation and Cloudflare bypass.
