@@ -13,9 +13,6 @@ https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/repo.
 [TrexxyMon/Cinder-Extensions-Testing](https://github.com/TrexxyMon/Cinder-Extensions-Testing)
 
 ## Available Extensions
-- **FullLengthAudioBooks** offers search, latest titles, streaming and multipart audiobook downloads. Cinder collects tracks across all pages of the selected edition.
-- **BookAudioBooks** offers search, latest titles, streaming and multipart audiobook downloads, including editions with tracks on several pages.
-- **Audiozaic** searches audiobooks and downloads their numbered MP3 parts as one library entry. The website's countdowns start when you choose a download and take about a minute. Playback is available after download. Requires Cinder 1.2.4 or newer.
 - **Mobilism**: On-device forum search with your website login, release metadata, supported direct links and optional debrid. Books by default; audiobook results are opt-in. See [setup, host limitations and validation status](docs/mobilism.md).
 - **Z-Library (Direct)**: Scrapes Z-Library mirrors with IP rotation and Cloudflare bypass.
 - **JNovels**: Searches JNovels light novel EPUB/PDF posts with on-device link resolution.
@@ -23,6 +20,12 @@ https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions-Testing/main/repo.
 - **ReadComicsOnline**: Searches, browses, and reads western comics from ReadComicsOnline.ru with direct requests and browser fallback.
 
 ## Moved to the public repository
+
+**Audiozaic**, **BookAudioBooks**, and **FullLengthAudioBooks** now come from the
+[public Cinder Extensions catalog](https://raw.githubusercontent.com/TrexxyMon/Cinder-Extensions/main/repo.json).
+In Cinder, add that catalog under **Settings > Extensions > Add Repository**,
+refresh both catalogs, then update the installed extensions. The public versions
+use the same extension IDs, so existing installations can update in place.
 
 **GoldenAudiobooks, AudioBookBay, Knaben Audiobooks, and The Pirate Bay Audiobooks** are now
 maintained in the [public repository](https://github.com/TrexxyMon/Cinder-Extensions)
